@@ -1,9 +1,9 @@
 @echo off
-rem PromptInjectionFinder - auf die neueste Release-Version aktualisieren (Windows)
+rem PromptInjectionFinder - update to the newest release (Windows)
 setlocal
 cd /d "%~dp0"
 if not exist ".venv\Scripts\python.exe" (
-  echo Noch nicht eingerichtet. Bitte zuerst run_windows.bat starten.
+  echo Not set up yet. Please start run_windows.bat first.
   goto end
 )
 set PYTHONUTF8=1

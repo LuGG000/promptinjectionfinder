@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="de">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -14,27 +14,28 @@
     <svg viewBox="0 0 32 32" width="28" height="28" aria-hidden="true"><rect width="32" height="32" rx="8" fill="var(--accent)"/><circle cx="14" cy="14" r="7" fill="none" stroke="#fff" stroke-width="3"/><path d="M19 19l6 6" stroke="#fff" stroke-width="3" stroke-linecap="round"/></svg>
     <div>
       <div class="brand-name">PromptInjectionFinder</div>
-      <div class="brand-sub">Offline · deterministisch · v__PIF_VERSION__</div>
+      <div class="brand-sub"><span data-i18n="brand_sub">Offline · deterministic</span> · v__PIF_VERSION__</div>
     </div>
   </div>
   <div class="top-actions">
-    <label class="btn primary" for="file-input">Dateien wählen</label>
+    <label class="btn primary" for="file-input" data-i18n="choose_files">Choose files</label>
     <input id="file-input" type="file" multiple hidden accept=".pdf,.md,.markdown,.txt,.html,.htm,.csv,.json,.xml,.yaml,.yml,.log,.rst,.tex,.eml">
-    <label class="btn" for="dir-input">Ordner hochladen</label>
+    <label class="btn" for="dir-input" data-i18n="upload_folder">Upload folder</label>
     <input id="dir-input" type="file" webkitdirectory multiple hidden>
-    <button class="btn" id="btn-url">Webseite scannen</button>
-    <button class="btn" id="btn-path">Pfad scannen</button>
-    <button class="btn accent" id="btn-export" disabled>Bereinigen &amp; exportieren</button>
-    <button class="btn icon" id="btn-update" title="Nach Updates suchen" aria-label="Nach Updates suchen">⟳</button>
-    <button class="btn icon" id="btn-theme" title="Hell/Dunkel umschalten" aria-label="Design umschalten">◐</button>
+    <button class="btn" id="btn-url" data-i18n="scan_website">Scan website</button>
+    <button class="btn" id="btn-path" data-i18n="scan_path">Scan path</button>
+    <button class="btn accent" id="btn-export" disabled data-i18n="clean_export">Clean &amp; export</button>
+    <button class="btn icon" id="btn-update" data-i18n-title="check_updates" title="Check for updates" aria-label="Check for updates">⟳</button>
+    <button class="btn icon" id="btn-lang" title="Deutsch / English" aria-label="Language">DE</button>
+    <button class="btn icon" id="btn-theme" data-i18n-title="toggle_theme" title="Toggle light/dark" aria-label="Toggle theme">◐</button>
   </div>
 </header>
 
 <main class="layout">
   <aside class="sidebar">
     <div class="side-head">
-      <span>Dateien <span id="file-count" class="muted"></span></span>
-      <button class="link" id="btn-clear" hidden>Alle entfernen</button>
+      <span><span data-i18n="files">Files</span> <span id="file-count" class="muted"></span></span>
+      <button class="link" id="btn-clear" hidden data-i18n="remove_all">Remove all</button>
     </div>
     <div id="summary" class="summary" hidden></div>
     <ul id="file-list" class="file-list"></ul>
@@ -44,12 +45,12 @@
     <div id="dropzone" class="dropzone">
       <div class="drop-inner">
         <svg viewBox="0 0 48 48" width="56" height="56" aria-hidden="true"><path d="M24 31V9m0 0l-8 8m8-8l8 8" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/><path d="M8 30v6a4 4 0 004 4h24a4 4 0 004-4v-6" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg>
-        <h2>Dokumente hier ablegen</h2>
-        <p><button class="btn primary" id="drop-url" type="button">Webseite per Link scannen</button></p>
-        <p>PDF, Markdown, Text und HTML werden lokal auf versteckte Prompt Injections geprüft:<br>
-          weißer/grauer/winziger Text, verdeckter Text, unsichtbare Unicode-Zeichen, Emoji-Smuggling,
-          Homoglyphen, kodierte Payloads, versteckte Kommentare und mehr.</p>
-        <p class="muted">Keine Daten verlassen diesen Rechner.</p>
+        <h2 data-i18n="drop_title">Drop documents here</h2>
+        <p><button class="btn primary" id="drop-url" type="button" data-i18n="scan_by_link">Scan a website by link</button></p>
+        <p data-i18n-html="drop_text">PDF, Markdown, text and HTML are checked locally for hidden prompt injections:<br>
+          white/grey/tiny text, covered text, invisible Unicode characters, emoji smuggling,
+          homoglyphs, encoded payloads, hidden comments and more.</p>
+        <p class="muted" data-i18n="no_data_leaves">No data leaves this computer.</p>
       </div>
     </div>
 
@@ -68,15 +69,15 @@
 
       <div class="toolbar">
         <div class="tabs" role="tablist">
-          <button class="tab active" data-tab="findings" role="tab">Funde <span id="t-count" class="pill"></span></button>
-          <button class="tab" data-tab="document" role="tab">Dokument</button>
-          <button class="tab" data-tab="preview" role="tab">Bereinigte Vorschau</button>
+          <button class="tab active" data-tab="findings" role="tab"><span data-i18n="tab_findings">Findings</span> <span id="t-count" class="pill"></span></button>
+          <button class="tab" data-tab="document" role="tab" data-i18n="tab_document">Document</button>
+          <button class="tab" data-tab="preview" role="tab" data-i18n="tab_preview">Cleaned preview</button>
         </div>
         <div class="tb-actions">
-          <button class="btn small" id="sel-rec">Empfohlene wählen</button>
-          <button class="btn small" id="sel-all">Alle</button>
-          <button class="btn small" id="sel-none">Keine</button>
-          <button class="btn small primary" id="btn-download">Bereinigt herunterladen</button>
+          <button class="btn small" id="sel-rec" data-i18n="select_recommended">Select recommended</button>
+          <button class="btn small" id="sel-all" data-i18n="select_all">All</button>
+          <button class="btn small" id="sel-none" data-i18n="select_none">None</button>
+          <button class="btn small primary" id="btn-download" data-i18n="download_cleaned">Download cleaned</button>
         </div>
       </div>
 
@@ -89,52 +90,51 @@
 
 <dialog id="dlg-path" class="dialog">
   <form method="dialog">
-    <h2>Lokalen Pfad scannen</h2>
-    <p class="muted">Datei oder Ordner auf diesem Rechner (Unterordner werden mitgescannt).</p>
-    <input id="path-input" type="text" placeholder="C:\Users\…\Dokumente" autocomplete="off">
+    <h2 data-i18n="path_title">Scan a local path</h2>
+    <p class="muted" data-i18n="path_text">File or folder on this computer (subfolders are included).</p>
+    <input id="path-input" type="text" placeholder="C:\Users\…\Documents  ·  /home/…/Documents" autocomplete="off">
     <div class="dlg-actions">
-      <button class="btn" value="cancel">Abbrechen</button>
-      <button class="btn primary" id="path-go" value="go">Scannen</button>
+      <button class="btn" value="cancel" data-i18n="cancel">Cancel</button>
+      <button class="btn primary" id="path-go" value="go" data-i18n="scan">Scan</button>
     </div>
   </form>
 </dialog>
 
 <dialog id="dlg-url" class="dialog wide">
   <form method="dialog">
-    <h2>Webseite scannen</h2>
-    <p class="muted">Lädt die Seite samt CSS, folgt optional Links und Unterseiten und prüft alles auf versteckte Prompt Injections.
-      Das ist die einzige Funktion, die das Internet nutzt.</p>
-    <label class="field">Adresse (URL)
-      <input id="url-input" type="text" placeholder="https://beispiel.de/seite.html" autocomplete="off" spellcheck="false">
+    <h2 data-i18n="scan_website">Scan website</h2>
+    <p class="muted" data-i18n="url_text">Loads the page including its CSS, optionally follows links and sub-pages, and checks everything for hidden prompt injections. This is the only feature that uses the internet.</p>
+    <label class="field"><span data-i18n="url_address">Address (URL)</span>
+      <input id="url-input" type="text" placeholder="https://example.com/page.html" autocomplete="off" spellcheck="false">
     </label>
     <div class="url-opts">
-      <label class="field">Link-Tiefe
+      <label class="field"><span data-i18n="url_depth">Link depth</span>
         <select id="url-depth">
-          <option value="0">0 – nur diese Seite</option>
-          <option value="1" selected>1 – plus direkt verlinkte Seiten</option>
-          <option value="2">2 – zwei Ebenen tief</option>
-          <option value="3">3 – drei Ebenen tief</option>
+          <option value="0" data-i18n="depth0">0 – this page only</option>
+          <option value="1" selected data-i18n="depth1">1 – plus directly linked pages</option>
+          <option value="2" data-i18n="depth2">2 – two levels deep</option>
+          <option value="3" data-i18n="depth3">3 – three levels deep</option>
         </select>
       </label>
-      <label class="field">Max. Seiten
+      <label class="field"><span data-i18n="url_max">Max. pages</span>
         <input id="url-max" type="number" min="1" max="300" value="30">
       </label>
     </div>
-    <label class="check"><input type="checkbox" id="url-same" checked> Nur dieselbe Domain</label>
-    <label class="check"><input type="checkbox" id="url-docs" checked> Verlinkte Dokumente mitscannen (PDF, TXT, MD …)</label>
-    <label class="check"><input type="checkbox" id="url-discover"> Auch im Text/in Kommentaren erwähnte Dateien ausprobieren</label>
-    <label class="check"><input type="checkbox" id="url-render" checked> <span id="url-render-label">JavaScript ausführen (Seite wie im Browser darstellen)</span></label>
-    <label class="check"><input type="checkbox" id="url-robots" checked> robots.txt beachten</label>
-    <p class="muted" style="font-size:12.5px;margin:6px 0 0">Export für Webseiten: lesbarer Text in Anzeige-Reihenfolge und erkannte Aufgaben als Markdown, kein HTML.</p>
+    <label class="check"><input type="checkbox" id="url-same" checked> <span data-i18n="url_same">Same domain only</span></label>
+    <label class="check"><input type="checkbox" id="url-docs" checked> <span data-i18n="url_docs">Also scan linked documents (PDF, TXT, MD …)</span></label>
+    <label class="check"><input type="checkbox" id="url-discover"> <span data-i18n="url_discover">Also try files mentioned in text/comments</span></label>
+    <label class="check"><input type="checkbox" id="url-render" checked> <span id="url-render-label">Run JavaScript</span></label>
+    <label class="check"><input type="checkbox" id="url-robots" checked> <span data-i18n="url_robots">Respect robots.txt</span></label>
+    <p class="muted" style="font-size:12.5px;margin:6px 0 0" data-i18n="url_export_note">Export for web pages: readable text in display order plus detected tasks as Markdown – no HTML.</p>
     <div id="url-progress" hidden>
       <div class="progress"><div id="url-bar"></div></div>
       <div id="url-status" class="muted mono"></div>
     </div>
     <div id="url-log"></div>
     <div class="dlg-actions">
-      <button class="btn" id="url-close" value="cancel">Schließen</button>
-      <button class="btn" id="url-cancel" type="button" hidden>Abbrechen</button>
-      <button class="btn primary" id="url-go" type="button">Scannen</button>
+      <button class="btn" id="url-close" value="cancel" data-i18n="close">Close</button>
+      <button class="btn" id="url-cancel" type="button" hidden data-i18n="cancel">Cancel</button>
+      <button class="btn primary" id="url-go" type="button" data-i18n="scan">Scan</button>
     </div>
   </form>
 </dialog>
@@ -142,47 +142,47 @@
 <dialog id="dlg-update" class="dialog">
   <form method="dialog">
     <h2>Updates</h2>
-    <p class="muted">Installiert: Version <b id="upd-current"></b>. Die Prüfung fragt das GitLab-Projekt nach der neuesten
-      Release-Version (einzige Internetverbindung dieser Funktion).</p>
-    <div id="upd-status" class="note">Prüfe …</div>
+    <p class="muted"><span data-i18n="installed_version">Installed version:</span> <b id="upd-current"></b>.
+      <span data-i18n="update_text">The check asks the GitLab project for the newest release (the only internet access of this feature).</span></p>
+    <div id="upd-status" class="note">…</div>
     <pre id="upd-log" class="upd-log" hidden></pre>
     <div class="dlg-actions">
-      <button class="btn" value="cancel">Schließen</button>
-      <button class="btn accent" id="upd-go" type="button" hidden>Jetzt aktualisieren</button>
+      <button class="btn" value="cancel" data-i18n="close">Close</button>
+      <button class="btn accent" id="upd-go" type="button" hidden data-i18n="update_now">Update now</button>
     </div>
   </form>
 </dialog>
 
 <dialog id="dlg-export" class="dialog wide">
   <form method="dialog">
-    <h2>Bereinigen &amp; exportieren</h2>
-    <p class="muted">Alle Dateien werden mit den jeweils ausgewählten Funden bereinigt und zusammen mit einem Bericht
-      (HTML + JSON) exportiert. Die Originale bleiben unverändert.</p>
-    <label class="check"><input type="checkbox" id="export-only-findings" checked> Nur Dateien mit Funden exportieren</label>
+    <h2 data-i18n="clean_export">Clean &amp; export</h2>
+    <p class="muted" data-i18n="export_text">All files are cleaned with the findings selected for them and exported together with a report (HTML + JSON). The originals stay unchanged.</p>
+    <label class="check"><input type="checkbox" id="export-only-findings" checked> <span data-i18n="export_only_findings">Export only files with findings</span></label>
     <div class="export-choice">
       <div>
-        <b>Als ZIP herunterladen</b>
-        <p class="muted">Landet wie jeder Download im Download-Ordner des Browsers.</p>
-        <button class="btn accent" id="export-zip" type="button">ZIP herunterladen</button>
+        <b data-i18n="zip_title">Download as ZIP</b>
+        <p class="muted" data-i18n="zip_text">Lands in the browser's download folder like any download.</p>
+        <button class="btn accent" id="export-zip" type="button" data-i18n="zip_button">Download ZIP</button>
       </div>
       <div>
-        <b>Direkt in einen Ordner speichern</b>
-        <label class="field">Zielordner
+        <b data-i18n="folder_title">Save directly to a folder</b>
+        <label class="field"><span data-i18n="target_folder">Target folder</span>
           <input id="export-dir" type="text" autocomplete="off">
         </label>
-        <button class="btn" id="export-go" type="button">In Ordner speichern</button>
+        <button class="btn" id="export-go" type="button" data-i18n="save_to_folder">Save to folder</button>
       </div>
     </div>
     <div id="export-result"></div>
     <div class="dlg-actions">
-      <button class="btn" value="cancel">Schließen</button>
+      <button class="btn" value="cancel" data-i18n="close">Close</button>
     </div>
   </form>
 </dialog>
 
 <div id="toast" class="toast" hidden></div>
-<div id="busy" class="busy" hidden><div class="spinner"></div><div id="busy-text">Scanne…</div></div>
+<div id="busy" class="busy" hidden><div class="spinner"></div><div id="busy-text">…</div></div>
 
+<script src="/static/i18n.js"></script>
 <script src="/static/app.js"></script>
 </body>
 </html>

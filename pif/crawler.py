@@ -55,8 +55,9 @@ class Fetched:
 @dataclass
 class LogEntry:
     url: str
-    status: str
+    status: str  # loaded | duplicate | skipped | error | http | limit | cancelled
     note: str = ""
+    code: int = 0  # HTTP status for "http"
 
 
 @dataclass
@@ -168,7 +169,7 @@ class Crawler:
             url = "https://" + url
         self.start = normalize_url(url)
         if not self.start:
-            raise ValueError("Ungültige URL")
+            raise ValueError("Invalid URL")
         self.host = urllib.parse.urlsplit(self.start).netloc
         self.max_depth = max(0, int(max_depth))
         self.max_pages = max(1, int(max_pages))
@@ -222,7 +223,7 @@ class Crawler:
         finally:
             self._last = time.monotonic()
         if len(data) > limit:
-            raise ValueError(f"größer als {limit // (1024 * 1024)} MB")
+            raise ValueError(f"larger than {limit // (1024 * 1024)} MB")
         return status, ctype, data, final
 
     def _css_for(self, urls) -> str:
@@ -244,47 +245,47 @@ class Crawler:
     # ------------------------------------------------------------- crawl
     def run(self) -> CrawlResult:
         result = CrawlResult()
-        queue = [(self.start, 0, "Start")]
+        queue = [(self.start, 0, "start")]
         seen = {self.start}
         digests = {}
         while queue and len(result.pages) < self.max_pages:
             if self.cancel():
-                result.log.append(LogEntry("", "abgebrochen"))
+                result.log.append(LogEntry("", "cancelled"))
                 break
             url, depth, origin = queue.pop(0)
             self.progress(len(result.pages), self.max_pages, url)
             if not self._robots_ok(url):
-                result.log.append(LogEntry(url, "übersprungen", "durch robots.txt gesperrt"))
+                result.log.append(LogEntry(url, "skipped", "blocked by robots.txt"))
                 continue
             try:
                 status, ctype, data, final = self._get(url)
             except Exception as exc:
-                result.log.append(LogEntry(url, "Fehler", str(exc)[:200]))
+                result.log.append(LogEntry(url, "error", str(exc)[:200]))
                 continue
             if status != 200:
-                result.log.append(LogEntry(url, f"HTTP {status}", origin))
+                result.log.append(LogEntry(url, "http", origin, code=status))
                 continue
             final = normalize_url(final) or url
             is_html = any(t in ctype for t in HTML_TYPES) or (not ctype and data.lstrip()[:15].lower().startswith((b"<!doctype", b"<html")))
             ext = posixpath.splitext(urllib.parse.urlsplit(final).path)[1].lower()
             is_doc = ("pdf" in ctype or ext in DOC_EXT or ctype.startswith("text/plain") or "markdown" in ctype)
             if not (is_html or is_doc):
-                result.log.append(LogEntry(url, "übersprungen", f"kein Text-Dokument ({ctype or 'unbekannt'})"))
+                result.log.append(LogEntry(url, "skipped", f"not a text document ({ctype or 'unknown'})"))
                 continue
             digest = hashlib.sha1(data).hexdigest()
             if digest in digests:
-                result.log.append(LogEntry(final, "Duplikat", f"gleicher Inhalt wie {digests[digest]}"))
+                result.log.append(LogEntry(final, "duplicate", f"same content as {digests[digest]}"))
                 continue
             digests[digest] = final
             page = Fetched(final, name_for(final, ctype, self.last_disposition), data, ctype, depth)
             result.pages.append(page)
-            result.log.append(LogEntry(final, "geladen", f"{len(data) // 1024} KB · Tiefe {depth} · {origin}"))
+            result.log.append(LogEntry(final, "loaded", f"{len(data) // 1024} KB · depth {depth} · {origin}"))
             if not is_html:
                 continue
             text = data.decode(_charset(ctype, data), "replace")
             if self.render_js:
                 from .render import render_dom
-                self.progress(len(result.pages) - 1, self.max_pages, "rendere " + final)
+                self.progress(len(result.pages) - 1, self.max_pages, "rendering " + final)
                 dom = render_dom(final)
                 if dom:
                     page.rendered = dom.encode("utf-8")
@@ -293,9 +294,9 @@ class Crawler:
             page.css = self._css_for(styles)
             if depth >= self.max_depth:
                 continue
-            candidates = [(u, "Link") for u in links]
+            candidates = [(u, "link") for u in links]
             if self.discover_mentions:
-                candidates += [(u, "im Text erwähnt") for u in mentioned_paths(text, final)]
+                candidates += [(u, "mentioned in text") for u in mentioned_paths(text, final)]
             for u, why in candidates:
                 if u in seen or not self._allowed_host(u):
                     continue
@@ -303,9 +304,9 @@ class Crawler:
                 if uext in SKIP_EXT or (uext in DOC_EXT and not self.include_documents):
                     continue
                 seen.add(u)
-                queue.append((u, depth + 1, f"{why} von {final}"))
+                queue.append((u, depth + 1, f"{why} from {final}"))
         if queue and len(result.pages) >= self.max_pages:
-            result.log.append(LogEntry("", "Limit", f"Seitenlimit {self.max_pages} erreicht, {len(queue)} weitere Links nicht geladen"))
+            result.log.append(LogEntry("", "limit", f"page limit {self.max_pages} reached, {len(queue)} more links not loaded"))
         return result
 
 

@@ -92,15 +92,15 @@ def test_crawl_follows_links_respects_robots_and_host(site):
     assert "/private/secret.html" not in urls          # robots.txt
     assert not any("other.example" in p.url for p in res.pages)  # other host
     assert "/bild.png" not in urls
-    assert any(e.status == "übersprungen" and "robots" in e.note for e in res.log)
-    assert any(e.status == "Duplikat" for e in res.log)  # /index.html == /
+    assert any(e.status == "skipped" and "robots" in e.note for e in res.log)
+    assert any(e.status == "duplicate" for e in res.log)  # /index.html == /
 
 
 def test_ignore_robots_and_page_limit(site):
     res = _crawl(site, max_depth=2, respect_robots=False)
     assert any(p.url.endswith("/private/secret.html") for p in res.pages)
     res = _crawl(site, max_depth=2, max_pages=2)
-    assert len(res.pages) == 2 and any(e.status == "Limit" for e in res.log)
+    assert len(res.pages) == 2 and any(e.status == "limit" for e in res.log)
 
 
 def test_documents_can_be_skipped(site):
@@ -157,7 +157,7 @@ def test_crawl_job_via_api(site):
         verdicts = {r["path"].replace(site, ""): r["verdict"] for r in st["results"]}
         assert verdicts["/a.html"] == "dangerous"
         assert verdicts["/frame.html"] == "dangerous"
-        assert any(e["status"] == "Duplikat" for e in st["log"])
+        assert any(e["status"] == "duplicate" for e in st["log"])
     finally:
         httpd.shutdown()
         httpd.server_close()

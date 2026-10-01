@@ -30,7 +30,7 @@ GITLAB = os.environ.get("PIF_GITLAB_URL", "https://gitlab.com").rstrip("/")
 API = f"{GITLAB}/api/v4/projects/{urllib.parse.quote(PROJECT, safe='')}"
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # files/folders of the program that an archive update replaces
-PROGRAM_ITEMS = ("pif", "tools", "tests", "samples", "README.md", "requirements.txt", "requirements-dev.txt",
+PROGRAM_ITEMS = ("pif", "tools", "tests", "samples", "README.md", "README.de.md", "requirements.txt", "requirements-dev.txt",
                  "run_windows.bat", "run_linux_mac.sh", "run_mac.command", "update_windows.bat",
                  "update_linux_mac.sh", "install.sh", "install.ps1", ".gitlab-ci.yml", ".gitignore", ".gitattributes")
 
@@ -57,11 +57,11 @@ def _request(url: str, timeout: int = 30) -> bytes:
     except urllib.error.HTTPError as e:
         if e.code in (401, 403, 404):
             raise UpdateError(
-                "Das GitLab-Projekt ist nicht öffentlich erreichbar. Entweder das Projekt öffentlich machen "
-                "oder einen Zugangstoken in der Umgebungsvariable PIF_GITLAB_TOKEN setzen.") from None
-        raise UpdateError(f"GitLab antwortet mit HTTP {e.code}") from None
+                "The GitLab project is not publicly reachable. Either make the project public "
+                "or set an access token in the environment variable PIF_GITLAB_TOKEN.") from None
+        raise UpdateError(f"GitLab answered with HTTP {e.code}") from None
     except urllib.error.URLError as e:
-        raise UpdateError(f"Keine Verbindung zu {GITLAB}: {e.reason}") from None
+        raise UpdateError(f"No connection to {GITLAB}: {e.reason}") from None
 
 
 def _latest_via_git():
@@ -72,7 +72,7 @@ def _latest_via_git():
         return None
     tags = set(re.findall(r"refs/tags/(v\d+\.\d+(?:\.\d+)?)(?:\^\{\})?$", r.stdout, re.M))
     if not tags:
-        raise UpdateError("Es gibt noch kein Release (Git-Tag vX.Y.Z) im GitLab-Projekt.")
+        raise UpdateError("There is no release (git tag vX.Y.Z) in the GitLab project yet.")
     tag = max(tags, key=parse_version)
     return {"version": tag.lstrip("v"), "tag": tag, "notes": ""}
 
@@ -86,7 +86,7 @@ def latest_release() -> dict:
     data = json.loads(_request(f"{API}/repository/tags?order_by=version&sort=desc&per_page=50"))
     tags = [t for t in data if re.fullmatch(r"v\d+\.\d+(\.\d+)?", t.get("name", ""))]
     if not tags:
-        raise UpdateError("Es gibt noch kein Release (Git-Tag vX.Y.Z).")
+        raise UpdateError("There is no release (git tag vX.Y.Z) yet.")
     tags.sort(key=lambda t: parse_version(t["name"]), reverse=True)
     t = tags[0]
     notes = ((t.get("release") or {}).get("description") or t.get("message") or "").strip()
@@ -111,14 +111,14 @@ def install_method() -> str:
 def _git(*args) -> str:
     r = subprocess.run(["git", "-C", ROOT, *args], capture_output=True, text=True)
     if r.returncode != 0:
-        raise UpdateError(f"git {' '.join(args)} fehlgeschlagen: {(r.stderr or r.stdout).strip()[:400]}")
+        raise UpdateError(f"git {' '.join(args)} failed: {(r.stderr or r.stdout).strip()[:400]}")
     return r.stdout.strip()
 
 
 def _update_git(tag: str, log) -> None:
     if _git("status", "--porcelain", "--untracked-files=no"):
-        raise UpdateError("Im Programmordner gibt es lokale Änderungen. Bitte erst sichern/verwerfen (git status).")
-    log("Hole Releases von GitLab (git fetch) …")
+        raise UpdateError("The program folder has local changes. Please save or discard them first (git status).")
+    log("Fetching releases from GitLab (git fetch) …")
     _git("fetch", "--tags", "--force", "origin")
     branch = _git("rev-parse", "--abbrev-ref", "HEAD")
     if branch == "HEAD":  # detached (e.g. a release checkout): just move to the new tag
@@ -127,24 +127,24 @@ def _update_git(tag: str, log) -> None:
         try:
             _git("merge", "--ff-only", "--quiet", tag)
         except UpdateError:
-            raise UpdateError(f"Der Branch '{branch}' kann nicht automatisch auf {tag} vorgespult werden "
-                              f"(eigene Commits?). Manuell: git -C \"{ROOT}\" pull") from None
-    log(f"Programmdateien auf {tag} gebracht.")
+            raise UpdateError(f"The branch '{branch}' cannot be fast-forwarded to {tag} automatically "
+                              f"(own commits?). Manually: git -C \"{ROOT}\" pull") from None
+    log(f"Program files updated to {tag}.")
 
 
 def _update_archive(tag: str, log) -> None:
-    log(f"Lade Release {tag} herunter …")
+    log(f"Downloading release {tag} …")
     raw = _request(f"{API}/repository/archive.zip?sha={urllib.parse.quote(tag)}", timeout=120)
     with tempfile.TemporaryDirectory(prefix="pif-update-") as tmp:
         zipfile.ZipFile(io.BytesIO(raw)).extractall(tmp)
         tops = [d for d in os.listdir(tmp) if os.path.isdir(os.path.join(tmp, d))]
         if len(tops) != 1 or not os.path.isdir(os.path.join(tmp, tops[0], "pif")):
-            raise UpdateError("Unerwarteter Inhalt des Release-Archivs.")
+            raise UpdateError("Unexpected content of the release archive.")
         src = os.path.join(tmp, tops[0])
         backup = os.path.join(ROOT, ".update-backup")
         shutil.rmtree(backup, ignore_errors=True)
         os.makedirs(backup)
-        log("Ersetze Programmdateien (Sicherung in .update-backup) …")
+        log("Replacing program files (backup in .update-backup) …")
         for item in PROGRAM_ITEMS:
             new, old = os.path.join(src, item), os.path.join(ROOT, item)
             if not os.path.exists(new):
@@ -157,27 +157,27 @@ def _update_archive(tag: str, log) -> None:
                 shutil.copy2(new, old)
             if item.endswith((".sh", ".command")):
                 os.chmod(old, 0o755)
-    log(f"Programmdateien auf {tag} gebracht.")
+    log(f"Program files updated to {tag}.")
 
 
 def _install_requirements(log) -> None:
     req = os.path.join(ROOT, "requirements.txt")
     if not os.path.isfile(req):
         return
-    log("Aktualisiere Abhängigkeiten (pip) …")
+    log("Updating dependencies (pip) …")
     r = subprocess.run([sys.executable, "-m", "pip", "install", "--disable-pip-version-check", "-q", "-r", req],
                        capture_output=True, text=True)
     if r.returncode != 0:
-        log("Warnung: pip meldet einen Fehler: " + (r.stderr or r.stdout).strip()[-400:])
+        log("Warning: pip reported an error: " + (r.stderr or r.stdout).strip()[-400:])
 
 
 def update(force: bool = False, log=print) -> dict:
     info = check()
     if info["method"] == "exe":
-        raise UpdateError("Die EXE-Version kann sich nicht selbst ersetzen. Bitte die neue Version herunterladen "
-                          f"oder aus dem Quellcode bauen: {GITLAB}/{PROJECT}/-/releases")
+        raise UpdateError("The EXE version cannot replace itself. Please download the new version "
+                          f"or build it from source: {GITLAB}/{PROJECT}/-/releases")
     if not info["update_available"] and not force:
-        log(f"Bereits aktuell (Version {info['current']}).")
+        log(f"Already up to date (version {info['current']}).")
         return {**info, "updated": False}
     log(f"Update {info['current']} → {info['latest']} ({info['method']}) …")
     if info["method"] == "git":
@@ -185,5 +185,5 @@ def update(force: bool = False, log=print) -> dict:
     else:
         _update_archive(info["tag"], log)
     _install_requirements(log)
-    log("Fertig. Bitte PromptInjectionFinder neu starten.")
+    log("Done. Please restart PromptInjectionFinder.")
     return {**info, "updated": True}

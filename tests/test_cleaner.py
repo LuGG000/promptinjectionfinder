@@ -91,7 +91,7 @@ def test_export_folder_and_reports(tmp_path):
     assert len(rep["files"]) == len(items)
     for s in rep["files"]:
         assert s["after"]["risk_score"] < 40, s["file"]
-    assert (out / "cleaned" / "angriff_lebenslauf.cleaned.txt").exists()
+    assert (out / "cleaned" / "attack_cv.cleaned.txt").exists()
     # originals untouched
     for it in items:
         with open(os.path.join(SAMPLES, it["name"]), "rb") as fh:
@@ -103,7 +103,7 @@ def test_samples_verdicts():
     for fp in iter_files([SAMPLES]):
         r = scan_file(fp)
         name = os.path.basename(fp)
-        if name.startswith("angriff"):
+        if name.startswith("attack"):
             assert r.verdict == "dangerous", name
         else:
             assert r.verdict == "clean", (name, [(f.rule, f.score) for f in r.findings])

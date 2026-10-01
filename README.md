@@ -1,19 +1,22 @@
 # PromptInjectionFinder
 
-**Deterministischer, offline arbeitender Scanner für versteckte Prompt Injections in PDF-, Markdown-, Text- und HTML-Dateien sowie ganzen Webseiten (per Link inklusive Unterseiten) – mit Bereinigung und Export.**
+*[Deutsche Version: README.de.md](README.de.md)*
 
-Wer Text aus Webseiten, PDFs oder Dokumenten an ein KI-Modell weitergibt, gibt oft mehr weiter, als er sieht:
-weißer Text auf weißem Grund, winzige oder verdeckte Schrift, unsichtbare Unicode-Zeichen, in Emojis versteckte Bytes,
-HTML-Kommentare oder kodierte Befehle. PromptInjectionFinder macht genau diese Inhalte sichtbar, bewertet sie und
-entfernt sie auf Wunsch.
+**A deterministic, offline scanner for hidden prompt injections in PDF, Markdown, text and HTML files and whole websites (by link, including sub-pages) – with cleaning and export. Interface and reports in English and German.**
 
-- **Deterministisch:** keine KI, keine Heuristik mit Zufall. Gleiche Eingabe ergibt immer das gleiche Ergebnis, und jeder Fund ist mit Regel-ID begründet.
-- **Offline:** Der Server läuft nur auf `127.0.0.1`, und es werden keine externen Ressourcen geladen.
-- **Nachvollziehbar:** Jeder Fund zeigt Fundstelle, Begründung, dekodierten versteckten Inhalt und die Position im Dokument.
+Whoever passes text from websites, PDFs or documents to an AI model often passes on more than they can see:
+white text on white, tiny or covered text, invisible Unicode characters, bytes hidden in emojis, HTML comments or
+encoded commands. PromptInjectionFinder makes exactly this content visible, rates it and removes it on request.
+
+- **Deterministic:** no AI, no randomness. The same input always gives the same result, and every finding names the rule that produced it.
+- **Offline:** the server only listens on `127.0.0.1` and loads no external resources.
+- **Traceable:** every finding shows the evidence, the reason, the decoded hidden content and its position in the document.
+- **English and German:** the analysis understands English and German (plus French, Spanish, Italian, Portuguese and Dutch
+  injection phrases). The interface has an **EN/DE** switch; findings, reports and exports follow the chosen language.
 
 ---
 
-## Installation (ein Befehl)
+## Installation (one command)
 
 **Windows** (PowerShell):
 
@@ -21,201 +24,202 @@ entfernt sie auf Wunsch.
 irm https://gitlab.com/LuGG000/promptinjectionfinder/-/raw/main/install.ps1 | iex
 ```
 
-**Linux und macOS** (Terminal):
+**Linux and macOS** (terminal):
 
 ```bash
 curl -fsSL https://gitlab.com/LuGG000/promptinjectionfinder/-/raw/main/install.sh | sh
 ```
 
-Der Installer:
+The installer:
 
-- holt das neueste Release,
-- legt eine eigene Python-Umgebung an,
-- installiert die zwei Abhängigkeiten,
-- richtet die Starter ein: unter Windows Desktop- und Startmenü-Verknüpfung, unter Linux/macOS die Befehle
-  `promptinjectionfinder` (Oberfläche) und `pif` (Kommandozeile), unter Linux zusätzlich einen Startmenü-Eintrag.
+- fetches the newest release,
+- creates a private Python environment,
+- installs the two dependencies,
+- sets up launchers: on Windows a desktop and start menu shortcut, on Linux/macOS the commands
+  `promptinjectionfinder` (interface) and `pif` (command line), on Linux also a menu entry.
 
-Fehlt Python, installiert ihn der Windows-Installer per `winget`; unter Linux/macOS nennt er den passenden Paketbefehl.
-Ein **zweiter Aufruf aktualisiert** eine vorhandene Installation.
+If Python is missing, the Windows installer installs it with `winget`; on Linux/macOS it shows the right package command.
+**Running it a second time updates** an existing installation.
 
-Ohne Installer (z. B. nach `git clone` oder ZIP-Download): einfach die Startskripte in der Tabelle unten benutzen.
+Without the installer (e.g. after `git clone` or a ZIP download): just use the start scripts in the table below.
 
-> Die Einzeiler und das Update über die GitLab-API funktionieren ohne Anmeldung nur, wenn das GitLab-Projekt **öffentlich**
-> ist. Bei einem privaten Projekt: `git clone https://gitlab.com/LuGG000/promptinjectionfinder.git` mit eigenem Zugang und
-> dann `install.sh` / `install.ps1` im Ordner starten. Updates laufen dann über `git` mit denselben Zugangsdaten.
-> Alternativ einen Token in `PIF_GITLAB_TOKEN` setzen.
+> The one-liners and updates through the GitLab API only work without login if the GitLab project is **public**.
+> For a private project: `git clone https://gitlab.com/LuGG000/promptinjectionfinder.git` with your own access, then run
+> `install.sh` / `install.ps1` in that folder. Updates then use `git` with the same credentials.
+> Alternatively set a token in `PIF_GITLAB_TOKEN`.
 
-## Update auf die neueste Version
+## Updating to the newest version
 
-| Weg | Befehl |
+| Way | Command |
 |---|---|
-| Oberfläche | Knopf **⟳** oben rechts → „Jetzt aktualisieren“ |
-| Windows | Startmenü „PromptInjectionFinder aktualisieren“ oder `update_windows.bat` |
-| Linux / macOS | `pif update` oder `./update_linux_mac.sh` |
-| Nur prüfen | `pif update --check` (Exit-Code 10 = neue Version verfügbar) |
+| Interface | **⟳** button at the top right → “Update now” |
+| Windows | start menu “Update PromptInjectionFinder” or `update_windows.bat` |
+| Linux / macOS | `pif update` or `./update_linux_mac.sh` |
+| Check only | `pif update --check` (exit code 10 = new version available) |
 
-Releases sind Git-Tags `vX.Y.Z`; die CI legt daraus automatisch ein GitLab-Release an. Ein Update holt das neueste Release:
+Releases are git tags `vX.Y.Z`; the CI turns them into GitLab releases automatically. An update fetches the newest release:
 
-- **Git-Installation:** per `git fetch` und Fast-Forward.
-- **Sonst:** per Archiv-Download. Ersetzt werden nur die Programmdateien; eine Sicherung landet in `.update-backup`.
+- **git installation:** via `git fetch` and fast-forward.
+- **otherwise:** by downloading the release archive. Only program files are replaced; a backup goes to `.update-backup`.
 
-`.venv`, Exporte und eigene Dateien bleiben unberührt. Danach werden die Abhängigkeiten aktualisiert, und ein Neustart des
-Programms genügt.
+`.venv`, exports and your own files stay untouched. Afterwards the dependencies are updated; restart the program.
 
-## Starten ohne Installer
+## Starting without the installer
 
-Die Bedienung läuft komplett per Klick im Browser. Ein Startskript legt beim ersten Start eine eigene Umgebung (`.venv`)
-an und installiert die zwei Abhängigkeiten. Danach läuft alles offline, und es wird nichts systemweit installiert.
+Everything is operated by clicking in the browser. A start script creates a private environment (`.venv`) on the first
+start and installs the two dependencies. After that everything runs offline and nothing is installed system-wide.
 
-| System | Starten | Voraussetzung |
+| System | Start | Requirement |
 |---|---|---|
-| **Windows** 10/11 | Doppelklick auf **`run_windows.bat`** | Python ≥ 3.9 von python.org (Haken „Add to PATH“) oder `winget install Python.Python.3.12` |
-| **macOS** (Intel & Apple Silicon) | Doppelklick auf **`run_mac.command`** (beim ersten Mal: Rechtsklick → Öffnen) | `brew install python` oder python.org |
+| **Windows** 10/11 | double-click **`run_windows.bat`** | Python ≥ 3.9 from python.org (tick “Add to PATH”) or `winget install Python.Python.3.12` |
+| **macOS** (Intel & Apple Silicon) | double-click **`run_mac.command`** (first time: right-click → Open) | `brew install python` or python.org |
 | **Debian / Ubuntu / Mint** | `./run_linux_mac.sh` | `sudo apt install python3 python3-venv` |
 | **Arch / Manjaro** | `./run_linux_mac.sh` | `sudo pacman -S python` |
-| **Fedora / openSUSE** | `./run_linux_mac.sh` | `sudo dnf install python3` bzw. `sudo zypper install python3` |
-| **Windows ohne Python** | `PromptInjectionFinder.exe` (siehe unten) | – |
+| **Fedora / openSUSE** | `./run_linux_mac.sh` | `sudo dnf install python3` or `sudo zypper install python3` |
+| **Windows without Python** | `PromptInjectionFinder.exe` (see below) | – |
 
-Der Browser öffnet sich automatisch unter `http://127.0.0.1:8765`. Das Terminalfenster muss offen bleiben, denn es ist der
-lokale Server; Schließen beendet das Programm. Ist der Port belegt, wird automatisch der nächste freie genommen.
+The browser opens automatically at `http://127.0.0.1:8765`. Keep the terminal window open – it is the local server;
+closing it quits the program. If the port is taken, the next free one is used.
 
-Manuell, falls gewünscht:
+Manually, if you prefer:
 
 ```bash
 python3 -m venv .venv && .venv/bin/pip install -r requirements.txt   # Windows: .venv\Scripts\pip
-.venv/bin/python -m pif                                              # startet die Oberfläche
+.venv/bin/python -m pif                                              # starts the interface
 ```
 
-### Weboberfläche
+### Web interface
 
-1. Dateien oder ganze Ordner per Drag & Drop ablegen, über **Dateien wählen** / **Ordner hochladen** auswählen
-   oder per **Pfad scannen** einen lokalen Ordner angeben.
-2. Links erscheint jede Datei mit Bewertung (*Gefährlich*, *Verdächtig*, *Unauffällig*).
-3. **Funde:** Jeder Fund hat eine Checkbox. Empfohlene Funde sind vorausgewählt.
-   **Dokument:** Bei Text, Markdown und HTML wird die Fundstelle farbig markiert und unsichtbare Zeichen erscheinen als Chips.
-   Bei PDFs wird die gerenderte Seite angezeigt, und rote Rahmen zeigen den unsichtbaren Text.
-   **Bereinigte Vorschau:** zeigt das Ergebnis der Bereinigung samt neuer Risikobewertung.
-4. **Bereinigt herunterladen** liefert eine einzelne Datei. **Bereinigen & exportieren** bietet zwei Wege:
-   - **ZIP herunterladen:** Alle bereinigten Dateien landen samt `report.html` und `report.json` im Download-Ordner des Browsers.
-   - **In Ordner speichern:** schreibt in einen frei wählbaren Ordner und öffnet ihn auf Wunsch im Dateimanager.
+1. Drop files or whole folders, use **Choose files** / **Upload folder**, or enter a local folder via **Scan path**.
+2. Each file appears on the left with a verdict (*Dangerous*, *Suspicious*, *Clean*).
+3. **Findings:** every finding has a checkbox; recommended ones are preselected.
+   **Document:** for text, Markdown and HTML the evidence is highlighted and invisible characters appear as chips;
+   for PDFs the rendered page is shown and red frames mark the invisible text.
+   **Cleaned preview:** shows the result of the cleaning with the new risk rating.
+4. **Download cleaned** gives you a single file. **Clean & export** offers two ways:
+   - **Download ZIP:** all cleaned files plus `report.html` and `report.json` land in the browser's download folder.
+   - **Save to folder:** writes into a folder of your choice and can open it in the file manager.
 
-   Die Originale bleiben unverändert.
+   The originals stay unchanged. The **EN/DE** button switches the language of the interface, the findings and the exports.
 
-### Webseiten scannen (per Link)
+### Scanning websites (by link)
 
-Über **Webseite scannen** gibst du eine URL ein. Das Programm lädt die Seite und folgt auf Wunsch den Links und Unterseiten.
+**Scan website** takes a URL. The program loads the page and, if you want, follows its links and sub-pages.
 
-- **Link-Tiefe:** 0 = nur diese Seite, 1–3 = Links weiterverfolgen. Dazu kommt ein Limit für die Seitenzahl, standardmäßig 30.
-- **Nur dieselbe Domain** ist voreingestellt; **robots.txt** wird beachtet. Beides lässt sich für eigene Seiten abschalten.
-- **Verlinkte Dokumente** (PDF, TXT, MD, …) und **iframes** werden mitgeladen und mitgescannt.
-- **Externe Stylesheets** werden mitgeladen, inklusive CSS-Variablen und Farbverläufen. Nur so wird Text erkannt, der über eine CSS-Klasse
-  versteckt ist. `@media print` und Mobil-Regeln werden ignoriert.
-- **Reiter, Unterseiten und Aufklappbereiche**, die per CSS-Zustand (`.page.active`, `:target`, …) oder per Skript umgeschaltet werden,
-  zählen als normaler Inhalt und nicht als „versteckt“. Versteckte Elemente *innerhalb* solcher Reiter werden trotzdem gefunden.
-- Optional: **im Text/in Kommentaren erwähnte Dateien ausprobieren**, z. B. `vorlage.html` aus einem HTML-Kommentar.
-- Seiten mit identischem Inhalt werden nur einmal gescannt, und ein Protokoll zeigt jede URL mit Status (geladen, 404, robots, Duplikat).
+- **Link depth:** 0 = this page only, 1–3 = follow links; plus a page limit (default 30).
+- **Same domain only** is preset and **robots.txt** is respected; both can be switched off for your own sites.
+- **Linked documents** (PDF, TXT, MD, …) and **iframes** are loaded and scanned as well.
+- **External stylesheets** are loaded too, including CSS variables and gradients – only then is text hidden via a CSS
+  class detected. `@media print` and mobile-only rules are ignored.
+- **Tabs, sub-pages and collapsible sections** toggled by a CSS state (`.page.active`, `:target`, …) or by script count as
+  normal content, not as “hidden”. Hidden elements *inside* such tabs are still found.
+- Optional: **try files mentioned in text/comments**, e.g. `template.html` from an HTML comment.
+- Pages with identical content are scanned once; a log shows every URL with its status (loaded, 404, robots, duplicate).
 
-**JavaScript:** Ist Chrome, Edge, Chromium oder Brave installiert, wird jede Seite zusätzlich wie im Browser dargestellt
-(headless, `--dump-dom`). So sind auch Inhalte enthalten, die erst per Skript entstehen, etwa generierte Aufgaben oder Reiter.
-Geprüft wird die dargestellte Seite *und* der ausgelieferte Quelltext. Was nur im Quelltext steht (Scraper und KI-Tools lesen es
-trotzdem), wird als „Nur im Seitenquelltext“ gemeldet. Ohne Browser wird das statische HTML genutzt. Das Scannen von Webseiten
-ist die einzige Funktion, die das Internet nutzt.
+**JavaScript:** if Chrome, Edge, Chromium or Brave is installed, every page is additionally rendered like in a browser
+(headless, `--dump-dom`), so content created by scripts – generated exercises, tabs – is included. Both the rendered page
+*and* the delivered source code are checked; anything that only exists in the source (scrapers and AI tools still read it)
+is reported as “Only in page source”. Without a browser the static HTML is used. Scanning websites is the only feature that
+uses the internet.
 
-**Export von Webseiten: Text und Aufgaben statt HTML.** Für jede Seite entsteht eine Markdown-Datei mit dem bereinigten Text in
-Anzeige-Reihenfolge:
+**Exporting web pages: text and tasks instead of HTML.** For every page a Markdown file with the cleaned text in display
+order is written:
 
-- Überschriften, Listen und Tabellen bleiben erhalten. Eingabefelder erscheinen als `____`, Beschriftungen von Grafiken/Schaltbildern
-  als `[Grafik: …]`, Reiter und Unterseiten mit ihrem Namen.
-- Echt versteckter Text, also Injections, fehlt. Inhalte, die erst nach einem Klick sichtbar werden (Tipp, Lösung, `<details>`),
-  sind als *aufklappbar* markiert.
-- Oben stehen die **erkannten Aufgaben**: Überschriften wie „Aufgabe 1.2“ oder „Fragen zur Sicherung“, Eingabefelder und
-  Lückentabellen, Arbeitsanweisungen mit Operatoren (berechne/berechnet/berechnen Sie, erkläre, beschreibt, …), Fragenlisten,
-  vorhandene Lösung/Tipp. Navigation und Fußzeile zählen nicht zu Aufgaben.
-- Zusätzlich entstehen `Webseiten_Text_gesamt.md` (alle Seiten in Crawl-Reihenfolge) und `Aufgaben_gesamt.md`.
+- Headings, lists and tables are kept; input fields appear as `____`, labels of graphics/circuit diagrams as
+  `[Graphic: …]`, tabs and sub-pages with their names.
+- Really hidden text (injections) is left out. Content that only appears after a click (hint, solution, `<details>`) is
+  marked as *collapsible*.
+- At the top are the **detected tasks**: headings like “Task 1.2”, “Aufgabe 1.2” or “Questions”, input fields and fill-in
+  tables, work instructions with operator verbs (calculate, explain, describe / berechne, erkläre, beschreibt, …), question
+  lists, an available solution/hint. Navigation and footer never count as tasks.
+- Additionally `Website_text_all.md` (all pages in crawl order) and `Tasks_all.md` are written
+  (German mode: `Webseiten_Text_gesamt.md`, `Aufgaben_gesamt.md`).
 
 ```bash
-python -m pif scan-url https://beispiel.de/ --depth 2 --max-pages 50 --discover --out export/
+pif scan-url https://example.com/ --depth 2 --max-pages 50 --discover --out export/
 ```
 
-### Kommandozeile
+### Command line
 
 ```bash
-python -m pif scan samples/ -v                 # Bericht in der Konsole
-python -m pif scan datei.pdf --json            # maschinenlesbar
-python -m pif clean ordner/ --out export/      # bereinigen + exportieren
-python -m pif gui samples/ --port 8765         # Oberfläche mit vorgeladenen Dateien
+pif scan samples/ -v                     # report in the console
+pif --lang de scan samples/              # German output
+pif scan file.pdf --json                 # machine-readable (both languages in the "i18n" field)
+pif clean folder/ --out export/          # clean + export
+pif gui samples/ --port 8765             # interface with preloaded files
 ```
 
-`scan` beendet sich mit Exit-Code 1, sobald eine Datei das Risiko 65 erreicht (`--fail-at`). Damit eignet sich der Befehl für CI-Pipelines.
+(Without the installer use `python -m pif …`.) `scan` exits with code 1 as soon as a file reaches risk 65 (`--fail-at`),
+which makes it usable in CI pipelines. The default language can also be set with the environment variable `PIF_LANG=de`.
 
 ---
 
-## Was erkannt wird
+## What is detected
 
-### PDF (Analyse des *gerenderten* Dokuments)
-| Technik | Wie sie erkannt wird |
+### PDF (analysis of the *rendered* document)
+| Technique | How it is detected |
 |---|---|
-| Weiße/hellgraue Schrift auf weißem Grund | Die Seite wird gerendert, und die Textfarbe wird gegen die tatsächlich gerenderte Hintergrundfarbe gemessen (WCAG-Kontrast). So werden auch farbige Kästen berücksichtigt, z. B. blau auf blau. |
-| Winzige oder gestauchte Schrift | Schriftgröße, Glyphenhöhe und Zeichenbreite |
-| Unsichtbarer Rendermodus (Tr 3), Transparenz | Texttrace-Rendermodus und Opazität |
-| Text außerhalb der Seite | Text-Bounding-Box gegen den sichtbaren Seitenbereich (CropBox) |
-| Text unter Bildern oder Flächen | Zeichenreihenfolge (Z-Order) plus deckende Flächen und Bilder, auch wenn darüber anderer Text steht |
-| Abgeschnittener Text | Die Glyphenfarbe kommt im Rendering nicht vor |
-| Annotationen, Formularfelder, Links, Metadaten/XMP, JavaScript, Launch-Aktionen, eingebettete Dateien | Objekt- und Inhaltsanalyse |
-| Text auf ausgeblendeten Ebenen (Optional Content) | Analyse mit allen Ebenen eingeschaltet – andere PDF-Bibliotheken extrahieren diesen Text nämlich trotzdem |
-| Kontur- und Füllungs-Text | deckungsgleiche Spans (z. B. weiße Füllung mit schwarzer Kontur) werden zusammen bewertet und nicht doppelt gezählt |
-| OCR-Textebenen (Scans) | werden erkannt und *nicht* als versteckt gewertet; Injection-Text darin wird trotzdem gemeldet |
+| White/light grey text on white | The page is rendered and the text colour is measured against the actually rendered background (WCAG contrast) – coloured boxes count too, e.g. blue on blue. |
+| Tiny or squashed text | font size, glyph height and character width |
+| Invisible render mode (Tr 3), transparency | text trace render mode and opacity |
+| Text outside the page | text bounding box vs. the visible page area (CropBox) |
+| Text under images or shapes | drawing order (z-order) plus opaque shapes/images, even if other text is drawn on top |
+| Clipped text | the glyph colour does not occur in the rendering |
+| Annotations, form fields, links, metadata/XMP, JavaScript, launch actions, embedded files | object and content analysis |
+| Text on hidden layers (optional content) | analysed with all layers switched on – other PDF libraries extract it anyway |
+| Outline/fill text | congruent spans (e.g. white fill with black outline) are rated together and counted once |
+| OCR text layers (scans) | recognised and *not* counted as hidden; injection text inside is still reported |
 
 ### Markdown / HTML
-CSS-versteckte Elemente werden erkannt: `display:none`, `visibility:hidden`, `opacity`, `font-size:0`, weiße oder
-hintergrundgleiche Schrift, `left:-9999px`, `clip`, `transform:scale(0)`, `height:0`, das `hidden`-Attribut, `<template>` sowie
-Klassen-Regeln aus `<style>` mit echtem Selektor-Matching. Dazu kommen HTML-Kommentare, `[//]: # (…)`-Kommentare,
-Front-Matter, Alt-Texte und Titel, LaTeX-Tricks (`\textcolor{white}`, `\phantom`), Exfiltrations-Bild-URLs
-(`![](https://x/?q={chat})`) und `javascript:`-Links. Code-Blöcke werden korrekt als sichtbar behandelt.
+CSS-hidden elements: `display:none`, `visibility:hidden`, `opacity`, `font-size:0`, white or background-coloured text,
+`left:-9999px`, `clip`, `transform:scale(0)`, `height:0`, the `hidden` attribute, `<template>` and class rules from
+`<style>`/external stylesheets with real selector matching. Plus HTML comments, `[//]: # (…)` comments, front matter,
+alt texts, titles and `data-*` tooltips, LaTeX tricks (`\textcolor{white}`, `\phantom`), exfiltration image URLs
+(`![](https://x/?q={chat})`) and `javascript:` links. Code blocks are correctly treated as visible.
 
-### Unicode- und Emoji-Smuggling (alle Formate)
-- **Unicode-Tag-Zeichen** (ASCII-Smuggling, U+E0000–E007F). Sie werden dekodiert, legitime Flaggen wie 🏴󠁧󠁢󠁥󠁮󠁧󠁿 bleiben erlaubt.
-- **Variation-Selector-Smuggling** („Text in Emojis“): Bytes, die an ein Emoji angehängt sind, werden dekodiert.
-- **Zero-Width-Steganografie** (binär kodierte Nachrichten) und Zero-Width-Zeichen, die Wörter zerteilen.
-  Legitime Fälle wie Emoji-ZWJ-Sequenzen oder persische ZWNJ werden ignoriert.
-- **Bidi-Overrides** (Trojan Source), Steuerzeichen, ANSI-Escape-Codes (inklusive `ESC[8m` Conceal) und Wagenrücklauf-Überschreibung.
-- **Homoglyphen** (kyrillisch/griechisch in lateinischen Wörtern). Beim Bereinigen werden sie durch die echten Buchstaben ersetzt.
-- **Stilisierte Buchstaben:** 𝐟𝐞𝐭𝐭, Ｖｏｌｌｂｒｅｉｔｅ, 🅴🅼🅾🅹🅸-Buchstaben, Regional-Indicator-Text, Zalgo.
+### Unicode and emoji smuggling (all formats)
+- **Unicode tag characters** (ASCII smuggling, U+E0000–E007F) are decoded; legitimate flags like 🏴󠁧󠁢󠁥󠁮󠁧󠁿 stay allowed.
+- **Variation selector smuggling** (“text in emojis”): bytes attached to an emoji are decoded.
+- **Zero-width steganography** (binary-encoded messages) and zero-width characters splitting words.
+  Legitimate cases such as emoji ZWJ sequences or Persian ZWNJ are ignored.
+- **Bidi overrides** (Trojan Source), control characters, ANSI escape codes (including `ESC[8m` conceal) and carriage-return overwriting.
+- **Homoglyphs** (Cyrillic/Greek in Latin words) – replaced by the real letters when cleaning.
+- **Styled letters:** 𝐛𝐨𝐥𝐝, ｆｕｌｌ-ｗｉｄｔｈ, 🅴🅼🅾🅹🅸 letters, regional indicator text, Zalgo.
 
-### Kodierte Payloads
-Base64, Hex, `\x..`, `\u....`, URL-Encoding, HTML-Entities, Binär, ROT13 und rückwärts geschriebener Text werden dekodiert
-und erneut gegen die Regelbasis geprüft.
+### Encoded payloads
+Base64, hex, `\x..`, `\u....`, URL encoding, HTML entities, binary, ROT13 and reversed text are decoded and checked against
+the rule base again.
 
-### Injection-Sprache (≈ 110 Regeln, 7 Sprachen)
-Die Regeln decken Anweisungs-Überschreibung, Rollenübernahme und Jailbreaks, Systemprompt-Ausspähung, gefälschte Chat-Marker
-(`<|im_start|>`, `[INST]`, `<<SYS>>`), direkte KI-Ansprache („Hinweis an die KI“), Verschleierung („sag dem Nutzer nichts“),
-Exfiltration, Befehlsausführung und Bewertungsmanipulation ab (z. B. „give a positive review“ in Lebensläufen und Papern).
-Unterstützt werden Deutsch, Englisch, Französisch, Spanisch, Italienisch, Portugiesisch und Niederländisch.
+### Injection language (≈ 110 rules, 7 languages)
+The rules cover instruction override, role hijacking and jailbreaks, system prompt extraction, fake chat markers
+(`<|im_start|>`, `[INST]`, `<<SYS>>`), direct address to an AI (“Note to AI”, “Hinweis an die KI”), concealment
+(“do not tell the user”), exfiltration, command execution and rating manipulation (e.g. “give a positive review” in CVs
+and papers) in English, German, French, Spanish, Italian, Portuguese and Dutch.
 
-Die Regeln laufen auf einer **normalisierten Sicht** des Textes. Dabei werden Homoglyphen gefaltet, Akzente entfernt,
-unsichtbare Zeichen ignoriert, Leetspeak (`1gn0r3`) und g e s p e r r t e Buchstaben zusammengeführt. Über eine Offset-Tabelle
-zeigt jeder Treffer exakt auf die Originalstelle. Gegen Fehlalarme helfen strikte Wortgrenzen, wobei Matches ohne Leerzeichen
-nur in nachweislich verschleierten Bereichen zugelassen werden, außerdem ein Negations-Filter („never share your password“)
-und Clusterbildung: Erst mehrere schwache Signale zusammen ergeben einen starken Fund.
+The rules run on a **normalised view** of the text: homoglyphs folded, accents removed, invisible characters ignored,
+leetspeak (`1gn0r3`) and s p a c e d letters joined. An offset table maps every match back to the exact original position.
+False positives are kept low by strict word boundaries (matches without spaces only inside provably obfuscated regions),
+a negation filter (“never share your password”) and clustering: several weak signals together make a strong finding.
 
-### Bewertung
-Jeder Fund hat einen Score von 0–100 (*Info* < 20 ≤ *Niedrig* < 40 ≤ *Mittel* < 65 ≤ *Hoch* < 85 ≤ *Kritisch*).
-Versteckter Inhalt, der zusätzlich Injection-Sprache enthält, wird hochgestuft. Das Dateirisiko ergibt sich aus dem stärksten
-Fund plus einem gedämpften Anteil weiterer *unterschiedlicher* Signale. Wiederholungen derselben Regel addieren sich nicht.
+### Rating
+Every finding has a score 0–100 (*Info* < 20 ≤ *Low* < 40 ≤ *Medium* < 65 ≤ *High* < 85 ≤ *Critical*). Hidden content
+that also contains injection language is upgraded. The file risk is the strongest finding plus a damped share of further
+*different* signals; repetitions of the same rule do not add up.
 
 ---
 
-## Bereinigung
+## Cleaning
 
-| Dateityp | Vorgehen |
+| File type | Procedure |
 |---|---|
-| Text, Markdown, HTML | Ausgewählte Bereiche werden zeichengenau entfernt (ganze Sätze oder Elemente). Homoglyphen und stilisierte Buchstaben werden ersetzt statt gelöscht. Die Kodierung (UTF-8/BOM, UTF-16, cp1252) und Zeilenenden bleiben erhalten. |
-| PDF | Versteckter Text wird per Redaction *ohne sichtbare Box* aus dem Inhaltsstrom entfernt. Annotationen, Links, Metadaten, JavaScript- und Launch-Aktionen sowie eingebettete Dateien werden entfernt. Zusätzlich wird eine `.bereinigt.txt` mit dem sauberen Textinhalt exportiert. |
+| Text, Markdown, HTML | Selected ranges are removed character-exactly (whole sentences or elements). Homoglyphs and styled letters are replaced instead of deleted. Encoding (UTF-8/BOM, UTF-16, cp1252) and line endings are preserved. |
+| PDF | Hidden text is removed from the content stream by redaction *without a visible box*. Annotations, links, metadata, JavaScript/launch actions and embedded files are removed. A `.cleaned.txt` with the clean text is exported as well. |
+| Web pages | Exported as Markdown text in display order with detected tasks (see above). |
 
-Nach jeder Bereinigung wird die Datei erneut gescannt, und der Bericht zeigt das Risiko vorher und nachher.
+After cleaning, every file is scanned again and the report shows the risk before and after.
 
-> Hinweis zu PDFs: Liegt versteckter Text exakt *unter* sichtbarem Text, entfernt die Redaction an dieser Stelle beides.
-> In der Vorschau ist das sofort zu sehen.
+> Note for PDFs: if hidden text lies exactly *under* visible text, redaction removes both at that spot – the preview
+> shows this immediately.
 
 ---
 
@@ -226,58 +230,60 @@ pip install -r requirements-dev.txt
 python -m pytest -q
 ```
 
-Die Suite umfasst über 150 Tests: Angriffe in 7 Sprachen, 11 Verschleierungsarten, harmlose Gegenbeispiele,
-alle Smuggling-Techniken, 10 PDF-Versteckvarianten inklusive gedrehter Seiten und OCR-Scans, Bereinigung mit
-verschiedenen Kodierungen, Export und die Web-API inklusive Token- und DNS-Rebinding-Schutz.
-`tools/make_samples.py` erzeugt die Demo-Dateien in `samples/`.
+The suite (190+ tests) covers attacks in 7 languages, 11 obfuscation types, benign look-alikes, all smuggling techniques,
+10 PDF hiding variants including rotated pages and OCR scans, cleaning with different encodings, website crawling against a
+local test site, text/task extraction, English/German output, updates and the web API including token and DNS-rebinding
+protection. `tools/make_samples.py` creates the demo files in `samples/` (`attack_*` / `benign_*`, German and English).
 
-End-to-End-Test der Oberfläche: Chrome wird über das DevTools-Protokoll gesteuert, ohne zusätzliche Abhängigkeiten.
-Voraussetzungen sind Node ≥ 22 und Chrome:
+End-to-end test of the interface (drives Chrome through the DevTools protocol, no extra dependencies; needs Node ≥ 22 and Chrome):
 
 ```bash
 python -m pif gui --no-browser --port 8812 &
-node tests/ui_e2e.mjs http://127.0.0.1:8812/ "<pfad>\samples\angriff_rezept.md,<pfad>\samples\angriff_lebenslauf.pdf" "<export-ordner>"
+node tests/ui_e2e.mjs http://127.0.0.1:8812/ "<path>/samples/attack_recipe.md,<path>/samples/attack_cv.pdf" "<export folder>"
 ```
 
-Für die Regelbasis wurden zwei Korpora harmloser Dateien als Fehlalarm-Benchmark genutzt: rund 1.500 Dateien aus npm
-(Doku, Markdown, HTML, JS) und rund 500 aus der Python-Standardbibliothek, pip und numpy. Dort liegt die Fehlalarmquote
-der Stufe *Verdächtig* bei unter 1 %.
+The rule base was tuned against benign corpora (≈ 4,500 files from npm docs, the Python standard library, pip/numpy and
+a 2,500-page HTML help site); fewer than 1 % of them are rated *suspicious*.
 
-## Plattform-Tests
+## Platform tests
 
-`.gitlab-ci.yml` startet das Tool bei jedem Push genau so, wie ein Nutzer es tut (`run_linux_mac.sh`), und führt danach
-die komplette Test-Suite aus. Das passiert auf Debian 12, Ubuntu 24.04, Arch Linux und Fedora sowie mit Python 3.9 und 3.13.
-Windows wird lokal getestet (Suite, Startskript, EXE, Browser-E2E). macOS nutzt dasselbe Startskript wie Linux.
-PyMuPDF und numpy liefern fertige Pakete für macOS (Intel und Apple Silicon); mangels Mac-Runner gibt es dort aber keinen automatischen Test.
+`.gitlab-ci.yml` starts the tool on every push exactly as a user does (`run_linux_mac.sh`) and then runs the full test
+suite – on Debian 12, Ubuntu 24.04, Arch Linux and Fedora, with Python 3.9 and 3.13 – and tests the Linux installer.
+Windows is tested locally (suite, start script, installer, EXE, browser E2E). macOS uses the same start script as Linux;
+PyMuPDF and numpy ship ready-made packages for macOS (Intel and Apple Silicon), but there is no automatic macOS test.
 
-## Eigenständige EXE (optional)
+## Standalone EXE (optional)
 
 ```bat
 tools\build_exe.bat
 ```
 
-Erzeugt mit PyInstaller `dist\PromptInjectionFinder.exe`, die ohne Python-Installation läuft.
+Builds `dist\PromptInjectionFinder.exe` with PyInstaller; it runs without a Python installation.
 
-## Sicherheit der Oberfläche
-Der lokale Server bindet ausschließlich an `127.0.0.1`. Jede API-Anfrage braucht ein zufälliges Sitzungs-Token, und der Host-Header
-wird geprüft (Schutz gegen DNS-Rebinding). Eine strikte Content-Security-Policy verhindert, dass andere Webseiten im Browser die lokale
-API steuern können.
+## Security of the interface
+The local server binds to `127.0.0.1` only. Every API request needs a random session token and the Host header is checked
+(protection against DNS rebinding). A strict Content Security Policy prevents other websites in the browser from driving
+the local API.
 
-## Projektstruktur
+## Project structure
 ```
 pif/
-  patterns.py          Regelbasis + Matching-Engine
-  normalize.py         normalisierte Textsichten mit Offset-Mapping
-  unicode_tools.py     Zeichenklassen, Smuggling-Decoder, Homoglyphen
-  text_analyzer.py     formatunabhängige Analyse
-  markup_analyzer.py   Markdown/HTML-Versteckanalyse
-  css.py               Farben, Kontrast, CSS-Versteckregeln
-  pdf_analyzer.py      PDF-Sichtbarkeitsanalyse
-  scanner.py           Dateityp-Erkennung, Zusammenführung
-  cleaner.py           Bereinigung + Export
-  report.py            HTML-Bericht
-  server.py, web/      Offline-Weboberfläche
-tests/                 pytest-Suite
-tools/                 Beispiel-Generator, EXE-Build
-samples/               Demo-Dateien (angriff_* / harmlos_*)
+  patterns.py          rule base + matching engine
+  normalize.py         normalised text views with offset mapping
+  unicode_tools.py     character classes, smuggling decoders, homoglyphs
+  text_analyzer.py     format-independent analysis
+  markup_analyzer.py   Markdown/HTML hidden-content analysis
+  css.py               colours, contrast, CSS hiding rules
+  pdf_analyzer.py      PDF visibility analysis
+  crawler.py, render.py  website crawling, optional JavaScript rendering
+  textextract.py       readable text in display order + task detection
+  scanner.py           file type detection, merging
+  cleaner.py           cleaning + export
+  report.py            HTML report
+  i18n.py              English/German texts
+  updater.py           update to the newest release
+  server.py, web/      offline web interface
+tests/                 pytest suite + browser E2E test
+tools/                 sample generator, EXE build
+samples/               demo files (attack_* / benign_*)
 ```

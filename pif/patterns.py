@@ -141,9 +141,10 @@ _RULES = [
      r"(send|reveal|print|output|share|give|post|email|upload|forward|transmit|disclose|tell) (me |us )?(the |your |all |any |their |user s |users |my |all the |all your )"
      r"(api ?keys?|passwords?|passwds?|credentials|secrets?|access tokens?|auth tokens?|private keys?|session cookies?|cookies|env(ironment)? variables|ssh keys?|personal data|chat history|conversation history|previous messages|credit card)"),
     ("en.exfil.send_data_to", "exfil", 75,
-     r"(send|post|upload|forward|transmit|submit|exfiltrate|leak|email|e mail|relay|report) (all |the |this |any |every |your |their |a copy of )?"
-     r"(data|information|conversation|chat|messages?|content|text|documents?|files?|results?|summary|answers?|responses?|output|history|context|details|contents|emails?) "
-     r"(to|at|via|using|into) (https?|www|ftp|the following|this (url|link|address|endpoint|server|webhook)|my (server|email|webhook)|[a-z0-9._%+-]+ ?@)"),
+     r"(send|post|upload|forward|transmit|submit|exfiltrate|leak|email|e mail|relay|report|copy) (all |the |this |any |every |your |their |a copy of )?"
+     r"(?:(full|entire|complete|whole|current|previous|prior|private|user s|users) )?(?:(chat|conversation|message|session|browsing) )?"
+     r"(data|information|conversation|chat|messages?|content|text|documents?|files?|results?|summary|answers?|responses?|output|history|context|details|contents|emails?|logs?|transcript) "
+     r"(to|at|via|using|into) (https?|www|ftp|the following|this (url|link|address|endpoint|server|webhook)|my (server|email|webhook)|[a-z0-9._%+-]+ ?@ ?[a-z0-9-]+)"),
     ("en.exfil.render_image", "exfil", 45,
      r"(append|add|include|insert|embed|render|output) (the following |this |an |a )?(markdown image|image|img|tracking pixel|pixel|iframe)( tag)? (with|containing|that includes|whose url|pointing to)"),
     ("en.exfil.visit_url", "exfil", 15,
@@ -151,7 +152,7 @@ _RULES = [
     ("de.exfil.secrets", "exfil", 75,
      r"(sende|schicke|gib|verrate|ubermittle|leite|zeige|nenne|drucke) (mir |uns )?(die |deine |alle |samtliche |ihre )?(api ?schlussel|api ?keys?|passworter|passwort|kennwort|kennworter|zugangsdaten|anmeldedaten|geheimnisse|tokens?|privaten? ?schlussel|personlichen daten|chatverlauf|gesprachsverlauf|kreditkartendaten)"),
     ("de.exfil.send_data_to", "exfil", 70,
-     r"(sende|schicke|ubermittle|leite|lade|poste|maile|schicken sie|senden sie) (alle |die |diese |samtliche |deine |ihre |eine kopie der )?(daten|informationen|nachrichten|inhalte|dokumente|dateien|ergebnisse|zusammenfassung|antwort|chatverlauf|unterhaltung|e ?mails) (weiter )?(an|nach|zu|uber|auf) (https?|www|die folgende|diese|folgende|meine|[a-z0-9._%+-]+ ?@)"),
+     r"(sende|schicke|ubermittle|leite|lade|poste|maile|schicken sie|senden sie) (alle |die |diese |samtliche |deine |ihre |eine kopie der |den |das )?(?:(gesamten|kompletten|vollstandigen|bisherigen|ganzen|privaten) )?(daten|chatprotokoll|protokoll|verlauf|informationen|nachrichten|inhalte|dokumente|dateien|ergebnisse|zusammenfassung|antwort|chatverlauf|unterhaltung|e ?mails) (weiter )?(an|nach|zu|uber|auf) (https?|www|die folgende|diese|folgende|meine|[a-z0-9._%+-]+ ?@ ?[a-z0-9-]+)"),
     ("de.exfil.visit_url", "exfil", 15,
      r"(rufe|offne|besuche|lade|klicke) (die |diese |folgende |den )?(url|webseite|website|seite|link|adresse|webhook) "),
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env sh
-# PromptInjectionFinder – startet die Offline-Weboberflaeche (Linux / macOS).
-# Beim ersten Start wird eine eigene virtuelle Umgebung (.venv) angelegt, damit
-# nichts systemweit installiert werden muss (PEP 668: Arch, Debian 12+, Ubuntu 23+, Homebrew).
+# PromptInjectionFinder – starts the offline web interface (Linux / macOS).
+# The first start creates a private virtual environment (.venv), so nothing has to be
+# installed system-wide (PEP 668: Arch, Debian 12+, Ubuntu 23+, Homebrew).
 set -e
 cd "$(dirname "$0")"
 
@@ -18,24 +18,24 @@ find_python() {
 
 if [ ! -x .venv/bin/python ]; then
   PY=$(find_python) || {
-    echo "Python 3.9 oder neuer wurde nicht gefunden. Installation:"
+    echo "Python 3.9 or newer was not found. Install it:"
     echo "  Debian/Ubuntu: sudo apt install python3 python3-venv"
     echo "  Arch:          sudo pacman -S python"
     echo "  Fedora:        sudo dnf install python3"
-    echo "  macOS:         brew install python   (oder https://www.python.org)"
+    echo "  macOS:         brew install python   (or https://www.python.org)"
     exit 1
   }
-  echo "Lege virtuelle Umgebung an (einmalig) ..."
+  echo "Creating virtual environment (one time) ..."
   if ! "$PY" -m venv .venv; then
     rm -rf .venv
-    echo "Konnte keine virtuelle Umgebung anlegen."
-    echo "  Debian/Ubuntu: sudo apt install python3-venv   und danach erneut starten."
+    echo "Could not create the virtual environment."
+    echo "  Debian/Ubuntu: sudo apt install python3-venv   and start again."
     exit 1
   fi
 fi
 
 if ! .venv/bin/python -c "import pymupdf, numpy" >/dev/null 2>&1; then
-  echo "Installiere Abhaengigkeiten (einmalig, benoetigt Internet) ..."
+  echo "Installing dependencies (one time, needs internet) ..."
   .venv/bin/python -m pip install --upgrade pip >/dev/null 2>&1 || true
   .venv/bin/python -m pip install -r requirements.txt
 fi

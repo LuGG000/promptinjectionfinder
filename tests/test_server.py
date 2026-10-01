@@ -57,8 +57,8 @@ def test_dns_rebinding_blocked(base):
 
 
 def test_full_flow(base, tmp_path):
-    with open(os.path.join(SAMPLES, "angriff_rezept.md"), "rb") as fh:
-        st, body, _ = call(base, "/api/upload?name=angriff_rezept.md", raw=fh.read())
+    with open(os.path.join(SAMPLES, "attack_recipe.md"), "rb") as fh:
+        st, body, _ = call(base, "/api/upload?name=attack_recipe.md", raw=fh.read())
     assert st == 200
     res = json.loads(body)
     assert res["verdict"] == "dangerous"
@@ -76,12 +76,12 @@ def test_full_flow(base, tmp_path):
     out = tmp_path / "export"
     st, body, _ = call(base, "/api/export", {"out_dir": str(out), "items": [{"id": res["file_id"], "ids": ids}]})
     assert st == 200
-    assert (out / "cleaned" / "angriff_rezept.md").exists()
+    assert (out / "cleaned" / "attack_recipe.md").exists()
     assert (out / "report.html").exists()
 
 
 def test_pdf_page_render(base):
-    with open(os.path.join(SAMPLES, "angriff_lebenslauf.pdf"), "rb") as fh:
+    with open(os.path.join(SAMPLES, "attack_cv.pdf"), "rb") as fh:
         res = json.loads(call(base, "/api/upload?name=cv.pdf", raw=fh.read())[1])
     st, png, hdr = call(base, f"/api/page?id={res['file_id']}&page=0&t={server.TOKEN}")
     assert st == 200 and png[:4] == b"\x89PNG"
@@ -97,10 +97,10 @@ def test_scan_path(base):
 def test_export_zip(base):
     import io
     import zipfile
-    with open(os.path.join(SAMPLES, "angriff_meeting.txt"), "rb") as fh:
-        res = json.loads(call(base, "/api/upload?name=angriff_meeting.txt", raw=fh.read())[1])
+    with open(os.path.join(SAMPLES, "attack_meeting.txt"), "rb") as fh:
+        res = json.loads(call(base, "/api/upload?name=attack_meeting.txt", raw=fh.read())[1])
     st, body, hdr = call(base, "/api/export_zip", {"items": [{"id": res["file_id"], "ids": None}]})
     assert st == 200 and hdr.get("Content-Type") == "application/zip"
     names = zipfile.ZipFile(io.BytesIO(body)).namelist()
     assert "PromptInjectionFinder_Export/report.html" in names
-    assert "PromptInjectionFinder_Export/cleaned/angriff_meeting.txt" in names
+    assert "PromptInjectionFinder_Export/cleaned/attack_meeting.txt" in names

@@ -2,10 +2,13 @@
 "use strict";
 
 const TOKEN = document.querySelector('meta[name="pif-token"]').content;
-const SEV_DE = { critical: "Kritisch", high: "Hoch", medium: "Mittel", low: "Niedrig", info: "Info" };
 const SEV_ORDER = ["info", "low", "medium", "high", "critical"];
-const VERDICT_DE = { dangerous: "Gefährlich", suspicious: "Verdächtig", clean: "Unauffällig" };
-const TYPE_DE = { pdf: "PDF", markdown: "Markdown", html: "HTML", text: "Text" };
+const sevName = (s) => t("sev")[s];
+const verdictName = (v) => t("verdict")[v];
+const typeName = (x) => t("type")[x] || x;
+// findings carry both languages; pick the active one
+const ftitle = (x) => (x.i18n && x.i18n[LANG] ? x.i18n[LANG].title : x.title);
+const fdesc = (x) => (x.i18n && x.i18n[LANG] ? x.i18n[LANG].description : x.description);
 
 const state = {
   files: [],            // scan results (with file_id)
@@ -46,7 +49,7 @@ function toast(msg, err = false) {
   toast._t = setTimeout(() => (t.hidden = true), err ? 6000 : 3000);
 }
 
-function busy(on, text = "Scanne…") {
+function busy(on, text = t("scanning")) {
   $("#busy").hidden = !on;
   $("#busy-text").textContent = text;
 }
@@ -62,7 +65,7 @@ async function uploadFiles(fileList) {
   const files = Array.from(fileList).filter((f) => f.size > 0);
   if (!files.length) return;
   let done = 0, last = null;
-  busy(true, `Scanne 0 / ${files.length}…`);
+  busy(true, t("scanning_n", 0, files.length));
   try {
     for (const f of files) {
       try {
@@ -74,7 +77,7 @@ async function uploadFiles(fileList) {
         toast(`${f.name}: ${e.message}`, true);
       }
       done++;
-      busy(true, `Scanne ${done} / ${files.length}…`);
+      busy(true, t("scanning_n", done, files.length));
     }
   } finally {
     busy(false);
@@ -85,14 +88,14 @@ async function uploadFiles(fileList) {
 }
 
 async function scanPath(path) {
-  busy(true, "Scanne Pfad…");
+  busy(true, t("scanning_path"));
   try {
     const data = await api("/api/scan_path", { body: { path, recursive: true } });
     data.results.forEach(addResult);
     sortFiles();
     state.selected = state.files[0]?.file_id || null;
     renderAll();
-    toast(`${data.results.length} Datei(en) gescannt`);
+    toast(t("n_files_scanned", data.results.length));
   } catch (e) {
     toast(e.message, true);
   } finally {
@@ -121,17 +124,17 @@ function renderSidebar() {
   $("#btn-clear").hidden = state.files.length === 0;
   ul.innerHTML = state.files.map((f) => {
     const n = f.findings.filter((x) => x.severity !== "info").length;
-    const badge = f.error ? `<span class="badge error">Fehler</span>` : `<span class="badge ${f.verdict}">${VERDICT_DE[f.verdict]}</span>`;
+    const badge = f.error ? `<span class="badge error">${t("error")}</span>` : `<span class="badge ${f.verdict}">${verdictName(f.verdict)}</span>`;
     return `<li data-id="${f.file_id}" class="${f.file_id === state.selected ? "active" : ""}" title="${esc(f.path)}">
       <span class="fname">${esc(f.name)}</span>${badge}
-      <span class="fsub">${TYPE_DE[f.filetype] || f.filetype} · Risiko ${Math.round(f.risk_score)} · ${n} Fund${n === 1 ? "" : "e"}</span></li>`;
+      <span class="fsub">${typeName(f.filetype)} · ${t("risk")} ${Math.round(f.risk_score)} · ${t("findings_n", n)}</span></li>`;
   }).join("");
   const counts = { dangerous: 0, suspicious: 0, clean: 0 };
   state.files.forEach((f) => counts[f.verdict]++);
   const sum = $("#summary");
   sum.hidden = state.files.length === 0;
   sum.innerHTML = ["dangerous", "suspicious", "clean"].filter((k) => counts[k])
-    .map((k) => `<span class="badge ${k}">${counts[k]} ${VERDICT_DE[k]}</span>`).join("");
+    .map((k) => `<span class="badge ${k}">${counts[k]} ${verdictName(k)}</span>`).join("");
 }
 
 function renderDetail() {
@@ -141,16 +144,17 @@ function renderDetail() {
   if (!f) return;
   $("#d-name").textContent = f.name;
   const st = f.stats || {};
-  const meta = [TYPE_DE[f.filetype] || f.filetype];
-  if (st.pages) meta.push(`${st.pages} Seite${st.pages === 1 ? "" : "n"}`);
-  if (st.chars != null) meta.push(`${st.chars.toLocaleString("de-DE")} Zeichen`);
-  if (st.hidden_chars) meta.push(`${st.hidden_chars.toLocaleString("de-DE")} unsichtbar`);
+  const loc = LANG === "de" ? "de-DE" : "en-US";
+  const meta = [typeName(f.filetype)];
+  if (st.pages) meta.push(t("pages_n", st.pages));
+  if (st.chars != null) meta.push(t("chars_n", st.chars.toLocaleString(loc)));
+  if (st.hidden_chars) meta.push(t("invisible_n", st.hidden_chars.toLocaleString(loc)));
   if (st.encoding && !st.web) meta.push(st.encoding);
-  if (st.web) meta.push(st.rendered ? "Webseite · mit JavaScript dargestellt" : "Webseite · statisches HTML");
+  if (st.web) meta.push(st.rendered ? t("web_rendered") : t("web_static"));
   if (f.path && f.path !== f.name) meta.push(f.path);
   $("#d-meta").innerHTML = meta.map((m) => `<span>${esc(m)}</span>`).join("");
   $("#d-score").textContent = Math.round(f.risk_score);
-  $("#d-verdict").textContent = f.error ? "Fehler beim Lesen" : VERDICT_DE[f.verdict];
+  $("#d-verdict").textContent = f.error ? t("read_error") : verdictName(f.verdict);
   const color = f.verdict === "dangerous" ? "var(--sev-critical)" : f.verdict === "suspicious" ? "var(--sev-medium)" : "var(--good)";
   $("#d-bar").style.width = Math.max(3, f.risk_score) + "%";
   $("#d-bar").style.background = color;
@@ -175,7 +179,7 @@ function visible(s) {
     const run = j - i;
     if (run > 6) {
       out += cps.slice(i, i + 3).map((c) => `<span class="inv">${cpLabel(c.codePointAt(0))}</span>`).join("") +
-        `<span class="inv-run" title="${run} unsichtbare Zeichen">+${run - 3} weitere unsichtbare</span>`;
+        `<span class="inv-run" title="${t("invisible_chars", run)}">${t("more_invisible", run - 3)}</span>`;
     } else {
       out += cps.slice(i, j).map((c) => `<span class="inv">${cpLabel(c.codePointAt(0))}</span>`).join("");
     }
@@ -196,37 +200,39 @@ function evidenceHtml(s) {
   const html = esc(s).replace(/(⟦U\+[0-9A-F]{4,6}⟧)+/g, (run) => {
     const parts = run.match(/⟦U\+([0-9A-F]{4,6})⟧/g);
     if (parts.length <= 3) return parts.map((p) => `<span class="inv">${p.slice(1, -1)}</span>`).join("");
-    return `<span class="inv-run" title="${parts.length} unsichtbare Zeichen">${parts.length}× unsichtbar (${parts[0].slice(1, -1)}…)</span>`;
+    return `<span class="inv-run" title="${t("invisible_chars", parts.length)}">${t("invisible_short", parts.length, parts[0].slice(1, -1))}</span>`;
   });
   return html;
 }
 
 function locText(x) {
   const l = x.location;
-  if (l.target === "pdf_meta") return "Metadaten";
-  if (l.target === "pdf_js") return "Dokument-Aktionen";
-  if (l.target === "pdf_embedded") return "Anhang";
-  if (l.page != null) return `Seite ${l.page + 1}`;
-  if (l.line) return `Zeile ${l.line}`;
+  if (l.target === "pdf_meta") return t("loc_meta");
+  if (l.target === "pdf_js") return t("loc_js");
+  if (l.target === "pdf_embedded") return t("loc_attach");
+  if (l.target === "source") return t("loc_source");
+  if (l.page != null) return t("loc_page", l.page + 1);
+  if (l.line) return t("loc_line", l.line);
   return "";
 }
 
 function renderFindings(f) {
   const box = $("#tab-findings");
   if (f.error) {
-    box.innerHTML = `<div class="empty">Die Datei konnte nicht analysiert werden: ${esc(f.error)}</div>`;
+    box.innerHTML = `<div class="empty">${t("not_analysed")}${esc(f.error)}</div>`;
     return;
   }
   if (!f.findings.length) {
-    box.innerHTML = `<div class="empty ok">✔ Keine Auffälligkeiten gefunden.</div>`;
+    box.innerHTML = `<div class="empty ok">${t("no_findings")}</div>`;
     return;
   }
   const sel = state.choice[f.file_id];
   let html = "";
   if (f.stats && f.stats.ocr_pages && f.stats.ocr_pages.length) {
-    html += `<div class="note">Seiten mit OCR-Textebene erkannt (${f.stats.ocr_pages.join(", ")}): unsichtbarer Text über Scans ist dort normal und wird nicht als versteckt gewertet.</div>`;
+    html += `<div class="note">${t("ocr_note", f.stats.ocr_pages.join(", "))}</div>`;
   }
-  const groups = [["Gefährlich", (x) => x.score >= 65], ["Verdächtig", (x) => x.score >= 20 && x.score < 65], ["Hinweise", (x) => x.score < 20]];
+  const groups = [[t("grp_dangerous"), (x) => x.score >= 65], [t("grp_suspicious"), (x) => x.score >= 20 && x.score < 65],
+    [t("grp_hints"), (x) => x.score < 20]];
   for (const [label, pred] of groups) {
     const items = f.findings.filter(pred);
     if (!items.length) continue;
@@ -234,18 +240,18 @@ function renderFindings(f) {
     html += items.map((x) => `
       <article class="finding ${x.severity}" id="card-${x.id}">
         <input type="checkbox" data-fid="${x.id}" ${sel.has(x.id) ? "checked" : ""} ${x.removable ? "" : "disabled"}
-          title="${x.removable ? "Beim Bereinigen entfernen" : "Nicht automatisch entfernbar"}" aria-label="Fund entfernen">
+          title="${x.removable ? t("remove_on_clean") : t("not_removable")}" aria-label="${t("remove_finding")}">
         <div>
           <div class="f-top">
-            <span class="badge sev-${x.severity}">${SEV_DE[x.severity]} · ${Math.round(x.score)}</span>
-            <span class="f-title">${esc(x.title)}</span>
+            <span class="badge sev-${x.severity}">${sevName(x.severity)} · ${Math.round(x.score)}</span>
+            <span class="f-title">${esc(ftitle(x))}</span>
             <span class="f-loc">${esc(locText(x))}</span>
           </div>
-          <div class="f-desc">${esc(x.description)}</div>
-          ${x.evidence ? `<div class="f-block"><div class="lbl">Fundstelle</div><pre>${evidenceHtml(x.evidence)}</pre></div>` : ""}
-          ${x.decoded && x.decoded !== x.evidence ? `<div class="f-block decoded"><div class="lbl">Versteckter / dekodierter Inhalt</div><pre>${esc(x.decoded)}</pre></div>` : ""}
+          <div class="f-desc">${esc(fdesc(x))}</div>
+          ${x.evidence ? `<div class="f-block"><div class="lbl">${t("evidence")}</div><pre>${evidenceHtml(x.evidence)}</pre></div>` : ""}
+          ${x.decoded && x.decoded !== x.evidence ? `<div class="f-block decoded"><div class="lbl">${t("decoded")}</div><pre>${esc(x.decoded)}</pre></div>` : ""}
           <div class="f-actions">
-            ${hasDocLocation(f, x) ? `<button class="link" data-show="${x.id}">Im Dokument zeigen</button>` : ""}
+            ${hasDocLocation(f, x) ? `<button class="link" data-show="${x.id}">${t("show_in_doc")}</button>` : ""}
             <span class="muted mono" style="font-size:11px">${esc(x.rule)}</span>
           </div>
         </div>
@@ -292,15 +298,15 @@ function renderDocument(f, focusId) {
     const seg = chars.slice(k, j).join("");
     if (owner[k] >= 0) {
       const x = f.findings[owner[k]];
-      parts.push(`<mark class="${x.severity}" data-card="${x.id}" title="${esc(x.title)}">${visible(seg)}</mark>`);
+      parts.push(`<mark class="${x.severity}" data-card="${x.id}" title="${esc(ftitle(x))}">${visible(seg)}</mark>`);
     } else {
       parts.push(visible(seg));
     }
     k = j;
   }
-  const legend = `<div class="legend">Markierungen: ${["critical", "high", "medium", "low"].map((s) => `<span><i class="sev-${s}"></i>${SEV_DE[s]}</span>`).join("")}
-    <span>· <span class="inv">U+200B</span> = unsichtbares Zeichen</span>
-    ${f.stats && f.stats.truncated_preview ? "<span>· Vorschau gekürzt</span>" : ""}</div>`;
+  const legend = `<div class="legend">${t("marks")} ${["critical", "high", "medium", "low"].map((s) => `<span><i class="sev-${s}"></i>${sevName(s)}</span>`).join("")}
+    <span>· <span class="inv">U+200B</span> ${t("invisible_char")}</span>
+    ${f.stats && f.stats.truncated_preview ? `<span>${t("preview_truncated")}</span>` : ""}</div>`;
   box.innerHTML = legend + `<div class="docview mono">${parts.join("")}</div>`;
   if (focusId) {
     const a = document.getElementById("anc-" + focusId);
@@ -324,16 +330,16 @@ function renderPdf(f, box, focusId) {
       const off = r[3] <= 0 || r[4] <= 0 || r[1] >= 1 || r[2] >= 1;
       const x0 = Math.min(Math.max(r[1], 0), 0.99), y0 = Math.min(Math.max(r[2], 0), 0.99);
       const w = Math.max(Math.min(r[3], 1) - x0, 0.006), h = Math.max(Math.min(r[4], 1) - y0, 0.006);
-      return `<div class="pdf-hl ${x.severity}${off ? " offpage" : ""}" data-card="${x.id}" data-hl="${x.id}" title="${esc(x.title)}${off ? " (außerhalb der Seite)" : ""}"
+      return `<div class="pdf-hl ${x.severity}${off ? " offpage" : ""}" data-card="${x.id}" data-hl="${x.id}" title="${esc(ftitle(x))}${off ? t("off_page") : ""}"
         style="left:${x0 * 100}%;top:${y0 * 100}%;width:${w * 100}%;height:${h * 100}%"></div>`;
     }).join("");
     const width = Math.min(900, sz[0] * 1.5);
-    return `<div class="pdf-page" style="width:${width}px" id="pdfp-${p}"><span class="pno">Seite ${p + 1}</span>
-      <img loading="lazy" alt="Seite ${p + 1}" src="/api/page?id=${f.file_id}&page=${p}&zoom=1.5&t=${encodeURIComponent(TOKEN)}"
+    return `<div class="pdf-page" style="width:${width}px" id="pdfp-${p}"><span class="pno">${t("page")} ${p + 1}</span>
+      <img loading="lazy" alt="${t("page")} ${p + 1}" src="/api/page?id=${f.file_id}&page=${p}&zoom=1.5&t=${encodeURIComponent(TOKEN)}"
         style="aspect-ratio:${sz[0]}/${sz[1]}">${hls}</div>`;
   }).join("");
-  box.innerHTML = `<div class="note">Rote Rahmen markieren Text, den Menschen nicht sehen können (z. B. weiß auf weiß, winzig, verdeckt, außerhalb der Seite). Gestrichelt = außerhalb des sichtbaren Bereichs.</div>
-    <div class="pdf-pages">${pages || '<div class="empty">Keine Seiten</div>'}</div>`;
+  box.innerHTML = `<div class="note">${t("pdf_note")}</div>
+    <div class="pdf-pages">${pages || `<div class="empty">${t("no_pages")}</div>`}</div>`;
   if (focusId) {
     const el = box.querySelector(`[data-hl="${focusId}"]`);
     if (el) { el.scrollIntoView({ block: "center" }); el.classList.add("flash"); }
@@ -344,21 +350,21 @@ function renderPdf(f, box, focusId) {
 async function renderPreview(f) {
   const box = $("#tab-preview");
   const ids = Array.from(state.choice[f.file_id] || []);
-  box.innerHTML = `<div class="empty">Erzeuge bereinigte Vorschau…</div>`;
+  box.innerHTML = `<div class="empty">${t("making_preview")}</div>`;
   try {
-    const data = await api("/api/preview", { body: { id: f.file_id, ids } });
+    const data = await api("/api/preview", { body: { id: f.file_id, ids, lang: LANG } });
     if (state.selected !== f.file_id || state.tab !== "preview") return;
     const a = data.after;
     const cls = a.verdict === "clean" ? "note ok" : "note";
     const rest = a.findings.filter((x) => x.score >= 20);
     const web = f.stats && f.stats.web;
-    box.innerHTML = `<div class="${cls}"><b>${data.removed}</b> Fund(e) entfernt. Risiko danach: <b>${Math.round(a.risk_score)}/100</b> – ${VERDICT_DE[a.verdict]}.
-      ${web ? "<br>Webseite: Export als <b>Text in Anzeige-Reihenfolge mit erkannten Aufgaben</b> (Markdown). Versteckte Inhalte sind entfernt, Aufklappbares ist markiert." : ""}
-      ${rest.length ? `<br>Verbleibend: ${rest.map((x) => esc(x.title)).join(" · ")}` : ""}
-      ${f.filetype === "pdf" ? "<br><span class='muted'>Für PDFs wird der Text der bereinigten PDF-Datei angezeigt. Versteckte Textstellen wurden per Schwärzung (ohne sichtbare Box) entfernt.</span>" : ""}</div>
+    box.innerHTML = `<div class="${cls}">${t("removed_risk", data.removed, Math.round(a.risk_score), verdictName(a.verdict))}
+      ${web ? "<br>" + t("web_preview_note") : ""}
+      ${rest.length ? `<br>${t("remaining")}${rest.map((x) => esc(ftitle(x))).join(" · ")}` : ""}
+      ${f.filetype === "pdf" ? `<br><span class='muted'>${t("pdf_preview_note")}</span>` : ""}</div>
       <div class="docview mono">${visible(data.text)}</div>`;
   } catch (e) {
-    box.innerHTML = `<div class="empty">Fehler: ${esc(e.message)}</div>`;
+    box.innerHTML = `<div class="empty">${t("error")}: ${esc(e.message)}</div>`;
   }
 }
 
@@ -367,8 +373,10 @@ async function downloadCleaned() {
   const f = current();
   if (!f) return;
   try {
-    const res = await api("/api/download", { body: { id: f.file_id, ids: Array.from(state.choice[f.file_id]) }, raw: true });
-    saveBlob(await res.blob(), f.name.split("/").pop());
+    const res = await api("/api/download", { body: { id: f.file_id, ids: Array.from(state.choice[f.file_id]), lang: LANG }, raw: true });
+    const cd = res.headers.get("Content-Disposition") || "";
+    const m = cd.match(/filename\*=UTF-8''([^;]+)/);
+    saveBlob(await res.blob(), m ? decodeURIComponent(m[1]) : f.name.split("/").pop());
   } catch (e) {
     toast(e.message, true);
   }
@@ -398,14 +406,14 @@ function saveBlob(blob, name) {
 async function doExportZip(ev) {
   ev.preventDefault();
   const items = exportItems();
-  if (!items.length) { toast("Keine Dateien zum Exportieren", true); return; }
-  busy(true, "Bereinige und packe ZIP…");
+  if (!items.length) { toast(t("no_files_export"), true); return; }
+  busy(true, t("cleaning_zip"));
   try {
-    const res = await api("/api/export_zip", { body: { items }, raw: true });
+    const res = await api("/api/export_zip", { body: { items, lang: LANG }, raw: true });
     saveBlob(await res.blob(), "PromptInjectionFinder_Export.zip");
-    $("#export-result").innerHTML = `<div class="note ok">ZIP mit ${items.length} bereinigten Datei(en) und Bericht wurde heruntergeladen.</div>`;
+    $("#export-result").innerHTML = `<div class="note ok">${t("zip_done", items.length)}</div>`;
   } catch (e) {
-    $("#export-result").innerHTML = `<div class="note" style="border-color:var(--sev-critical)">Fehler: ${esc(e.message)}</div>`;
+    $("#export-result").innerHTML = `<div class="note" style="border-color:var(--sev-critical)">${t("error")}: ${esc(e.message)}</div>`;
   } finally {
     busy(false);
   }
@@ -414,17 +422,17 @@ async function doExportZip(ev) {
 async function doExport(ev) {
   ev.preventDefault();
   const items = exportItems();
-  if (!items.length) { toast("Keine Dateien zum Exportieren", true); return; }
-  busy(true, "Bereinige und exportiere…");
+  if (!items.length) { toast(t("no_files_export"), true); return; }
+  busy(true, t("cleaning_export"));
   try {
-    const data = await api("/api/export", { body: { out_dir: $("#export-dir").value.trim(), items } });
-    $("#export-result").innerHTML = `<div class="note ok">Export abgeschlossen: <b class="mono">${esc(data.out_dir)}</b>
-      <ul class="export-list">${data.summary.map((s) => `<li><span>${esc(s.file)}</span><span>Risiko ${Math.round(s.before)} → <b>${Math.round(s.after)}</b> · ${s.removed} entfernt</span></li>`).join("")}</ul>
-      <p><button class="btn small" type="button" id="open-folder">Ordner öffnen</button></p></div>`;
+    const data = await api("/api/export", { body: { out_dir: $("#export-dir").value.trim(), items, lang: LANG } });
+    $("#export-result").innerHTML = `<div class="note ok">${t("export_done")}<b class="mono">${esc(data.out_dir)}</b>
+      <ul class="export-list">${data.summary.map((s) => `<li><span>${esc(s.file)}</span><span>${t("risk_short")} ${Math.round(s.before)} → <b>${Math.round(s.after)}</b> · ${t("removed_n", s.removed)}</span></li>`).join("")}</ul>
+      <p><button class="btn small" type="button" id="open-folder">${t("open_folder")}</button></p></div>`;
     $("#open-folder").onclick = () => api("/api/open_folder", { body: { path: data.out_dir } }).catch((e) => toast(e.message, true));
     if (state.info) state.info.default_export_dir = $("#export-dir").value;
   } catch (e) {
-    $("#export-result").innerHTML = `<div class="note" style="border-color:var(--sev-critical)">Fehler: ${esc(e.message)}</div>`;
+    $("#export-result").innerHTML = `<div class="note" style="border-color:var(--sev-critical)">${t("error")}: ${esc(e.message)}</div>`;
   } finally {
     busy(false);
   }
@@ -447,9 +455,7 @@ const crawl = { job: null, timer: null };
 
 function openUrlDialog() {
   const browser = state.info && state.info.browser;
-  $("#url-render-label").textContent = browser
-    ? `JavaScript ausführen – Seite wie im Browser darstellen (${browser})`
-    : "JavaScript ausführen – kein Chrome/Edge/Chromium/Brave gefunden, es wird das statische HTML genutzt";
+  $("#url-render-label").textContent = browser ? t("render_with", browser) : t("render_none");
   $("#url-render").checked = !!browser;
   $("#url-log").innerHTML = "";
   $("#url-progress").hidden = true;
@@ -484,7 +490,7 @@ async function startCrawl(ev) {
   $("#url-log").innerHTML = "";
   $("#url-progress").hidden = false;
   $("#url-bar").style.width = "2%";
-  $("#url-status").textContent = "Starte…";
+  $("#url-status").textContent = t("starting");
   setCrawlRunning(true);
   try {
     const { job } = await api("/api/crawl", { body });
@@ -492,7 +498,7 @@ async function startCrawl(ev) {
     pollCrawl();
   } catch (e) {
     setCrawlRunning(false);
-    $("#url-status").textContent = "Fehler: " + e.message;
+    $("#url-status").textContent = t("error") + ": " + e.message;
   }
 }
 
@@ -502,13 +508,13 @@ async function pollCrawl() {
   try {
     st = await api("/api/crawl?job=" + encodeURIComponent(crawl.job));
   } catch (e) {
-    $("#url-status").textContent = "Fehler: " + e.message;
+    $("#url-status").textContent = t("error") + ": " + e.message;
     setCrawlRunning(false);
     return;
   }
   const pct = st.total ? Math.min(100, Math.round((st.done / st.total) * 100)) : 0;
-  $("#url-bar").style.width = Math.max(2, st.phase === "Analysiere" ? 50 + pct / 2 : pct / 2) + "%";
-  $("#url-status").textContent = `${st.phase}: ${st.done}/${st.total} · ${st.current || ""}`;
+  $("#url-bar").style.width = Math.max(2, st.phase === "analyze" ? 50 + pct / 2 : pct / 2) + "%";
+  $("#url-status").textContent = `${t(st.phase === "analyze" ? "phase_analyze" : "phase_fetch")}: ${st.done}/${st.total} · ${st.current || ""}`;
   if (st.status === "running") {
     crawl.timer = setTimeout(pollCrawl, 400);
     return;
@@ -517,7 +523,7 @@ async function pollCrawl() {
   setCrawlRunning(false);
   $("#url-bar").style.width = "100%";
   if (st.status === "error") {
-    $("#url-status").textContent = "Fehler: " + st.error;
+    $("#url-status").textContent = t("error") + ": " + st.error;
   } else {
     const results = st.results || [];
     results.forEach(addResult);
@@ -525,18 +531,19 @@ async function pollCrawl() {
     if (results.length) state.selected = results.slice().sort((a, b) => b.risk_score - a.risk_score)[0].file_id;
     renderAll();
     const bad = results.filter((r) => r.verdict !== "clean").length;
-    $("#url-status").textContent = `${st.status === "cancelled" ? "Abgebrochen. " : ""}${results.length} Seite(n) gescannt` +
-      (bad ? ` – ${bad} auffällig.` : " – alle unauffällig.");
+    $("#url-status").textContent = `${st.status === "cancelled" ? t("cancelled") : ""}${t("pages_scanned", results.length)}` +
+      (bad ? t("n_suspicious", bad) : t("all_clean"));
   }
   renderCrawlLog(st.log || []);
 }
 
 function renderCrawlLog(log) {
   if (!log.length) { $("#url-log").innerHTML = ""; return; }
-  $("#url-log").innerHTML = `<div class="lbl muted" style="margin-top:10px;font-size:12px">Protokoll</div><ul class="crawl-log">` +
+  $("#url-log").innerHTML = `<div class="lbl muted" style="margin-top:10px;font-size:12px">${t("log")}</div><ul class="crawl-log">` +
     log.map((e) => {
-      const ok = e.status === "geladen";
-      return `<li><span class="st ${ok ? "ok" : "bad"}">${esc(e.status)}</span><span class="u">${esc(e.url || "")}</span>` +
+      const ok = e.status === "loaded";
+      const label = (t("log_status")[e.status] || e.status) + (e.code ? " " + e.code : "");
+      return `<li><span class="st ${ok ? "ok" : "bad"}">${esc(label)}</span><span class="u">${esc(e.url || "")}</span>` +
         (e.note ? `<span class="n">${esc(e.note)}</span>` : "") + `</li>`;
     }).join("") + `</ul>`;
 }
@@ -549,7 +556,7 @@ async function cancelCrawl() {
 async function openUpdate() {
   $("#upd-current").textContent = (state.info && state.info.version) || "?";
   $("#upd-status").className = "note";
-  $("#upd-status").textContent = "Prüfe auf neue Version …";
+  $("#upd-status").textContent = t("checking_update");
   $("#upd-log").hidden = true;
   $("#upd-go").hidden = true;
   $("#dlg-update").showModal();
@@ -559,33 +566,33 @@ async function openUpdate() {
       $("#upd-status").textContent = r.error;
     } else if (r.update_available) {
       $("#upd-status").className = "note ok";
-      $("#upd-status").innerHTML = `Neue Version <b>${esc(r.latest)}</b> verfügbar.` +
+      $("#upd-status").innerHTML = t("new_version", esc(r.latest)) +
         (r.notes ? `<br><span class="muted">${esc(r.notes).slice(0, 400)}</span>` : "");
       $("#upd-go").hidden = r.method === "exe";
-      if (r.method === "exe") $("#upd-status").innerHTML += "<br>Die EXE-Version bitte neu herunterladen.";
+      if (r.method === "exe") $("#upd-status").innerHTML += t("exe_redownload");
     } else {
       $("#upd-status").className = "note ok";
-      $("#upd-status").textContent = `Du hast die neueste Version (${r.current}).`;
+      $("#upd-status").textContent = t("newest", r.current);
     }
   } catch (e) {
-    $("#upd-status").textContent = "Prüfung fehlgeschlagen: " + e.message;
+    $("#upd-status").textContent = t("check_failed") + e.message;
   }
 }
 
 async function runUpdate() {
   $("#upd-go").disabled = true;
-  $("#upd-status").textContent = "Aktualisiere … (das kann eine Minute dauern)";
+  $("#upd-status").textContent = t("updating");
   try {
     const r = await api("/api/update", { body: {} });
     $("#upd-log").hidden = false;
     $("#upd-log").textContent = (r.log || []).join("\n");
     $("#upd-status").className = r.ok ? "note ok" : "note";
     $("#upd-status").textContent = r.ok
-      ? "Update installiert. Bitte das Programm schließen (Konsolenfenster) und neu starten."
-      : "Update fehlgeschlagen: " + r.error;
+      ? t("update_done")
+      : t("update_failed") + r.error;
     $("#upd-go").hidden = !!r.ok;
   } catch (e) {
-    $("#upd-status").textContent = "Update fehlgeschlagen: " + e.message;
+    $("#upd-status").textContent = t("update_failed") + e.message;
   } finally {
     $("#upd-go").disabled = false;
   }
@@ -603,6 +610,14 @@ function initTheme() {
     const next = dark ? "light" : "dark";
     document.documentElement.dataset.theme = next;
     try { localStorage.setItem("pif-theme", next); } catch (e) { /* ignore */ }
+  };
+}
+
+function initLang() {
+  applyStaticI18n();
+  $("#btn-lang").onclick = () => {
+    setLang(LANG === "de" ? "en" : "de");
+    renderAll();
   };
 }
 
@@ -707,6 +722,7 @@ async function collectDropped(dt) {
 }
 
 async function init() {
+  initLang();
   initTheme();
   initEvents();
   try {
@@ -723,7 +739,7 @@ async function init() {
     }
     if (["findings", "document", "preview"].includes(h.get("tab"))) state.tab = h.get("tab");
   } catch (e) {
-    toast("Verbindung zum lokalen Server fehlgeschlagen: " + e.message, true);
+    toast(t("server_failed") + e.message, true);
   }
   renderAll();
 }

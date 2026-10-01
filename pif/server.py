@@ -63,7 +63,7 @@ class CrawlJob:
         self.id = uuid.uuid4().hex[:12]
         self.opts = opts
         self.status = "running"
-        self.phase = "Lade Seiten"
+        self.phase = "fetch"
         self.done = 0
         self.total = int(opts.get("max_pages") or 30)
         self.current = ""
@@ -89,8 +89,8 @@ class CrawlJob:
                               render_js=bool(o.get("render", False)),
                               progress=self._progress, cancel=lambda: self.cancelled)
             res = crawler.run()
-            self.log = [{"url": e.url, "status": e.status, "note": e.note} for e in res.log]
-            self.phase = "Analysiere"
+            self.log = [{"url": e.url, "status": e.status, "note": e.note, "code": e.code} for e in res.log]
+            self.phase = "analyze"
             self.total = len(res.pages)
             for i, page in enumerate(res.pages):
                 if self.cancelled:
@@ -158,7 +158,7 @@ class Handler(BaseHTTPRequestHandler):
     def _body(self) -> bytes:
         n = int(self.headers.get("Content-Length") or 0)
         if n > MAX_UPLOAD:
-            raise ValueError("Datei zu groß (max. 200 MB)")
+            raise ValueError("File too large (max. 200 MB)")
         return self.rfile.read(n) if n else b""
 
     def _authorized(self) -> bool:
@@ -211,7 +211,7 @@ class Handler(BaseHTTPRequestHandler):
             if url.path == "/api/crawl":
                 job = JOBS.get((q.get("job") or [""])[0])
                 if not job:
-                    return self._error("Job unbekannt", 404)
+                    return self._error("Unknown job", 404)
                 return self._json(job.snapshot())
             return self._error("not found", 404)
         except Exception as exc:
@@ -252,7 +252,7 @@ class Handler(BaseHTTPRequestHandler):
             if url.path == "/api/scan_path":
                 path = os.path.expanduser(payload.get("path", "").strip().strip('"'))
                 if not path or not os.path.exists(path):
-                    return self._error("Pfad nicht gefunden")
+                    return self._error("Path not found")
                 out = []
                 for fp in iter_files([path], recursive=bool(payload.get("recursive", True))):
                     with open(fp, "rb") as fh:
@@ -265,7 +265,7 @@ class Handler(BaseHTTPRequestHandler):
             if url.path == "/api/preview":
                 f = STORE.get(payload.get("id"))
                 if not f:
-                    return self._error("Datei unbekannt", 404)
+                    return self._error("Unknown file", 404)
                 cleaned = clean_document(f["name"], f["data"], f["result"], payload.get("ids"), web=f.get("web"), lang=payload.get("lang", "en"))
                 rescan = cleaned["rescan"]
                 return self._json({"text": cleaned["text"][:400_000], "removed": cleaned["removed"],
@@ -274,7 +274,7 @@ class Handler(BaseHTTPRequestHandler):
             if url.path == "/api/download":
                 f = STORE.get(payload.get("id"))
                 if not f:
-                    return self._error("Datei unbekannt", 404)
+                    return self._error("Unknown file", 404)
                 cleaned = clean_document(f["name"], f["data"], f["result"], payload.get("ids"), web=f.get("web"), lang=payload.get("lang", "en"))
                 body, fname = cleaned["data"], os.path.basename(f["name"])
                 if "markdown" in cleaned:
@@ -290,9 +290,9 @@ class Handler(BaseHTTPRequestHandler):
                         items.append({"name": f["name"], "data": f["data"], "result": f["result"], "ids": it.get("ids"),
                                       "web": f.get("web")})
                 if not items:
-                    return self._error("Keine Dateien zum Exportieren")
+                    return self._error("No files to export")
                 if url.path == "/api/export_zip":
-                    return self._send(200, _export_zip(items), "application/zip",
+                    return self._send(200, _export_zip(items, payload.get("lang", "en")), "application/zip",
                                       {"Content-Disposition": 'attachment; filename="PromptInjectionFinder_Export.zip"'})
                 out_dir = os.path.expanduser((payload.get("out_dir") or "").strip().strip('"')) or default_export_dir()
                 info = export(items, out_dir, lang=payload.get("lang", "en"))
@@ -305,7 +305,7 @@ class Handler(BaseHTTPRequestHandler):
                 if os.path.isdir(path):
                     _open_folder(path)
                     return self._json({"ok": True})
-                return self._error("Ordner nicht gefunden", 404)
+                return self._error("Folder not found", 404)
             if url.path == "/api/crawl":
                 job = CrawlJob(payload)
                 JOBS[job.id] = job
@@ -339,11 +339,11 @@ class Handler(BaseHTTPRequestHandler):
             return self._error(f"{type(exc).__name__}: {exc}", 500)
 
 
-def _export_zip(items) -> bytes:
+def _export_zip(items, lang: str = "en") -> bytes:
     """Export into a temporary folder and return it as ZIP (browser download, no path needed)."""
     with tempfile.TemporaryDirectory() as tmp:
         root = os.path.join(tmp, "PromptInjectionFinder_Export")
-        export(items, root)
+        export(items, root, lang=lang)
         buf = io.BytesIO()
         with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
             for dirpath, _dirs, files in os.walk(root):
@@ -373,7 +373,7 @@ def _free_port(host, port):
                 return p
             except OSError:
                 continue
-    raise OSError("Kein freier Port gefunden")
+    raise OSError("No free port found")
 
 
 def make_server(host="127.0.0.1", port=8765):
@@ -392,11 +392,11 @@ def preload_paths(paths):
 
 def run(host="127.0.0.1", port=8765, open_browser=True, preload=None):
     if preload:
-        print(f"{preload_paths(preload)} Datei(en) vorab gescannt.")
+        print(f"{preload_paths(preload)} file(s) pre-scanned.")
     httpd = make_server(host, port)
     url = f"http://{host}:{httpd.server_address[1]}/"
-    print(f"PromptInjectionFinder {__version__} läuft offline unter {url}")
-    print("Beenden mit Strg+C.")
+    print(f"PromptInjectionFinder {__version__} is running offline at {url}")
+    print("Keep this window open while using the tool. Quit with Ctrl+C.")
     if open_browser:
         threading.Timer(0.6, lambda: webbrowser.open(url)).start()
     try:

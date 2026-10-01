@@ -1,6 +1,6 @@
 @echo off
-rem PromptInjectionFinder - startet die Offline-Weboberflaeche (Windows).
-rem Beim ersten Start wird eine eigene virtuelle Umgebung (.venv) angelegt.
+rem PromptInjectionFinder - starts the offline web interface (Windows).
+rem The first start creates a private virtual environment (.venv).
 setlocal
 cd /d "%~dp0"
 
@@ -12,13 +12,13 @@ if not defined PY (where python >nul 2>nul && set "PY=python")
 if not defined PY goto nopython
 %PY% -c "import sys; sys.exit(0 if sys.version_info >= (3, 9) else 1)" >nul 2>nul || goto nopython
 
-echo Lege virtuelle Umgebung an (einmalig) ...
+echo Creating virtual environment (one time) ...
 %PY% -m venv .venv || goto venvfail
 
 :deps
 ".venv\Scripts\python.exe" -c "import pymupdf, numpy" >nul 2>nul
 if errorlevel 1 (
-  echo Installiere Abhaengigkeiten ^(einmalig, benoetigt Internet^) ...
+  echo Installing dependencies ^(one time, needs internet^) ...
   ".venv\Scripts\python.exe" -m pip install -r requirements.txt || goto pipfail
 )
 set PYTHONUTF8=1
@@ -26,14 +26,14 @@ set PYTHONUTF8=1
 goto end
 
 :nopython
-echo Python 3.9 oder neuer wurde nicht gefunden.
-echo Bitte von https://www.python.org installieren (Haken bei "Add python.exe to PATH" setzen)
-echo oder: winget install Python.Python.3.12
+echo Python 3.9 or newer was not found.
+echo Please install it from https://www.python.org (tick "Add python.exe to PATH")
+echo or: winget install Python.Python.3.12
 goto end
 :venvfail
-echo Konnte keine virtuelle Umgebung anlegen.
+echo Could not create the virtual environment.
 goto end
 :pipfail
-echo Installation der Abhaengigkeiten fehlgeschlagen (Internetverbindung?).
+echo Installing the dependencies failed (internet connection?).
 :end
 pause

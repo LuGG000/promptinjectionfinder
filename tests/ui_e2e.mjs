@@ -71,11 +71,11 @@ try {
   await waitFor("document.querySelectorAll('#file-list li').length >= 2");
   const items = await js("Array.from(document.querySelectorAll('#file-list li')).map(li => li.innerText.replace(/\\s+/g,' '))");
   check("upload via file input", items.length >= 2, JSON.stringify(items));
-  check("dangerous file sorted first", /Gefährlich/.test(items[0]));
+  check("dangerous file sorted first", /Dangerous/.test(items[0]));
 
   // select markdown attack file
-  await js("Array.from(document.querySelectorAll('#file-list li')).find(li => li.innerText.includes('angriff_rezept')).click()");
-  await waitFor("document.querySelector('#d-name').textContent.includes('angriff_rezept')");
+  await js("Array.from(document.querySelectorAll('#file-list li')).find(li => li.innerText.includes('attack_recipe')).click()");
+  await waitFor("document.querySelector('#d-name').textContent.includes('attack_recipe')");
   const cards = await js("document.querySelectorAll('.finding').length");
   check("finding cards rendered", cards >= 5, `(${cards})`);
   const checked = await js("document.querySelectorAll('.finding input:checked').length");
@@ -99,13 +99,13 @@ try {
   await js("document.querySelector('[data-tab=preview]').click()");
   await waitFor("document.querySelector('#tab-preview .note') !== null");
   const p0 = await js("document.querySelector('#tab-preview .note').innerText");
-  check("preview with nothing selected keeps risk", /0<\/b>|^0 Fund|0 Fund/.test(p0) && /Gefährlich/.test(p0), p0.slice(0, 90));
+  check("preview with nothing selected keeps risk", /^0 finding/.test(p0) && /Dangerous/.test(p0), p0.slice(0, 90));
 
   // select recommended -> clean
   await js("document.querySelector('#sel-rec').click(); document.querySelector('[data-tab=preview]').click()");
   await waitFor("document.querySelector('#tab-preview .note.ok') !== null");
   const p1 = await js("document.querySelector('#tab-preview').innerText");
-  check("preview after cleaning is clean", /Unauffällig/.test(p1) && !p1.includes("Ignore all previous"));
+  check("preview after cleaning is clean", /Clean\./.test(p1) && !p1.includes("Ignore all previous"));
 
   // PDF view with overlays
   await js("Array.from(document.querySelectorAll('#file-list li')).find(li => li.innerText.includes('.pdf')).click()");
@@ -120,15 +120,15 @@ try {
   await js(`document.querySelector('#export-dir').value = ${JSON.stringify(OUT)}; document.querySelector('#export-go').click()`);
   await waitFor("document.querySelector('#export-result .note') !== null", 60000);
   const ex = await js("document.querySelector('#export-result').innerText");
-  check("export dialog writes folder", /Export abgeschlossen/.test(ex), ex.replace(/\s+/g, " ").slice(0, 160));
-  check("export folder exists", fs.existsSync(path.join(OUT, "report.html")) && fs.existsSync(path.join(OUT, "bereinigt")));
+  check("export dialog writes folder", /Export finished/.test(ex), ex.replace(/\s+/g, " ").slice(0, 160));
+  check("export folder exists", fs.existsSync(path.join(OUT, "report.html")) && fs.existsSync(path.join(OUT, "cleaned")));
 
   // ZIP download straight from the browser
   const dl = path.join(OUT, "_downloads");
   fs.mkdirSync(dl, { recursive: true });
   await send("Browser.setDownloadBehavior", { behavior: "allow", downloadPath: dl });
   await js("document.querySelector('#export-zip').click()");
-  await waitFor("/ZIP mit/.test(document.querySelector('#export-result').innerText)", 60000);
+  await waitFor("/ZIP with/.test(document.querySelector('#export-result').innerText)", 60000);
   for (let i = 0; i < 40 && !fs.existsSync(path.join(dl, "PromptInjectionFinder_Export.zip")); i++) await sleep(250);
   check("zip download via browser", fs.existsSync(path.join(dl, "PromptInjectionFinder_Export.zip")));
 
@@ -141,24 +141,41 @@ try {
     await waitFor("document.querySelector('#dlg-url').open");
     await js(`document.querySelector('#url-input').value = ${JSON.stringify(SITE)}; document.querySelector('#url-depth').value = '1'; document.querySelector('#url-go').click()`);
     await waitFor("!document.querySelector('#url-progress').hidden");
-    await waitFor("document.querySelector('#url-go').hidden === false && /gescannt|Fehler/.test(document.querySelector('#url-status').innerText)", 180000);
+    await waitFor("document.querySelector('#url-go').hidden === false && /scanned|Error/.test(document.querySelector('#url-status').innerText)", 180000);
     const status = await js("document.querySelector('#url-status').innerText");
     const after = await js("document.querySelectorAll('#file-list li').length");
     const logRows = await js("document.querySelectorAll('.crawl-log li').length");
-    check("website scan via dialog", /gescannt/.test(status) && after > before, `${status} (+${after - before} Dateien, ${logRows} Protokollzeilen)`);
+    check("website scan via dialog", /scanned/.test(status) && after > before, `${status} (+${after - before} files, ${logRows} log rows)`);
     const shotUrl = await send("Page.captureScreenshot", { format: "png" });
     fs.writeFileSync(path.join(process.env.TEMP, "pif_cdp_url.png"), Buffer.from(shotUrl.result.data, "base64"));
     await js("document.querySelector('#dlg-url').close()");
     // the crawled page: preview must be readable text with tasks, not HTML
-    await js("Array.from(document.querySelectorAll('#file-list li')).find(li => /Webseite|html/i.test(li.innerText) && !/angriff|harmlos/.test(li.innerText)).click()");
+    await js("Array.from(document.querySelectorAll('#file-list li')).find(li => /Web page|html/i.test(li.innerText) && !/attack|benign/.test(li.innerText)).click()");
     await js("document.querySelector('[data-tab=preview]').click()");
     await waitFor("document.querySelector('#tab-preview .docview') !== null", 60000);
     const prev = await js("document.querySelector('#tab-preview .docview').innerText");
-    check("web preview is text with tasks", /Erkannte Aufgaben/.test(prev) && !/<html|<div|<script/i.test(prev),
+    check("web preview is text with tasks", /Detected tasks/.test(prev) && !/<html|<div|<script/i.test(prev),
       prev.split("\n").filter((l) => l.startsWith("### ")).slice(0, 4).join(" | "));
     const shotPrev = await send("Page.captureScreenshot", { format: "png" });
     fs.writeFileSync(path.join(process.env.TEMP, "pif_cdp_webprev.png"), Buffer.from(shotPrev.result.data, "base64"));
   }
+
+  // language switch EN -> DE -> EN
+  await js("document.querySelector('#dlg-export').open && document.querySelector('#dlg-export').close()");
+  await js("Array.from(document.querySelectorAll('#file-list li')).find(li => li.innerText.includes('attack_recipe')).click()");
+  await js("document.querySelector('[data-tab=findings]').click()");
+  const enTab = await js("document.querySelector('[data-tab=findings]').innerText");
+  const enTitle = await js("document.querySelector('.f-title').innerText");
+  await js("document.querySelector('#btn-lang').click()");
+  const deTab = await js("document.querySelector('[data-tab=findings]').innerText");
+  const deTitle = await js("document.querySelector('.f-title').innerText");
+  const deBtn = await js("document.querySelector('#btn-scan-placeholder') ? '' : document.querySelector('#btn-url').innerText");
+  check("language switch to German", /Funde/.test(deTab) && /Webseite scannen/.test(deBtn) && deTitle !== enTitle,
+    `${enTab.split("\n")[0]} -> ${deTab.split("\n")[0]} | ${enTitle.slice(0, 40)} -> ${deTitle.slice(0, 40)}`);
+  const shotDe = await send("Page.captureScreenshot", { format: "png" });
+  fs.writeFileSync(path.join(process.env.TEMP, "pif_cdp_de.png"), Buffer.from(shotDe.result.data, "base64"));
+  await js("document.querySelector('#btn-lang').click()");
+  check("language switch back to English", /Findings/.test(await js("document.querySelector('[data-tab=findings]').innerText")));
 
   // theme toggle
   const before = await js("getComputedStyle(document.body).backgroundColor");
