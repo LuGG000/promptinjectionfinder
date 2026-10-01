@@ -1,0 +1,548 @@
+/* PromptInjectionFinder – offline UI (no external dependencies). */
+"use strict";
+
+const TOKEN = document.querySelector('meta[name="pif-token"]').content;
+const SEV_DE = { critical: "Kritisch", high: "Hoch", medium: "Mittel", low: "Niedrig", info: "Info" };
+const SEV_ORDER = ["info", "low", "medium", "high", "critical"];
+const VERDICT_DE = { dangerous: "Gefährlich", suspicious: "Verdächtig", clean: "Unauffällig" };
+const TYPE_DE = { pdf: "PDF", markdown: "Markdown", html: "HTML", text: "Text" };
+
+const state = {
+  files: [],            // scan results (with file_id)
+  selected: null,       // file_id
+  choice: {},           // file_id -> Set(finding ids to remove)
+  tab: "findings",
+  info: null,
+};
+
+const $ = (s, el = document) => el.querySelector(s);
+const $$ = (s, el = document) => Array.from(el.querySelectorAll(s));
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+/* ------------------------------------------------------------------ API */
+async function api(path, opts = {}) {
+  const headers = Object.assign({ "X-PIF-Token": TOKEN }, opts.headers || {});
+  let body = opts.body;
+  if (body && !(body instanceof Blob) && !(body instanceof ArrayBuffer) && typeof body !== "string") {
+    body = JSON.stringify(body);
+    headers["Content-Type"] = "application/json";
+  }
+  const res = await fetch(path, { method: opts.method || (body ? "POST" : "GET"), headers, body });
+  if (opts.raw) {
+    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || res.statusText);
+    return res;
+  }
+  const data = await res.json().catch(() => ({ error: res.statusText }));
+  if (!res.ok || data.error) throw new Error(data.error || res.statusText);
+  return data;
+}
+
+function toast(msg, err = false) {
+  const t = $("#toast");
+  t.textContent = msg;
+  t.className = "toast" + (err ? " err" : "");
+  t.hidden = false;
+  clearTimeout(toast._t);
+  toast._t = setTimeout(() => (t.hidden = true), err ? 6000 : 3000);
+}
+
+function busy(on, text = "Scanne…") {
+  $("#busy").hidden = !on;
+  $("#busy-text").textContent = text;
+}
+
+/* ------------------------------------------------------------------ files */
+function addResult(r) {
+  const idx = state.files.findIndex((f) => f.file_id === r.file_id);
+  if (idx >= 0) state.files[idx] = r; else state.files.push(r);
+  state.choice[r.file_id] = new Set(r.findings.filter((f) => f.removable && f.default_remove).map((f) => f.id));
+}
+
+async function uploadFiles(fileList) {
+  const files = Array.from(fileList).filter((f) => f.size > 0);
+  if (!files.length) return;
+  let done = 0, last = null;
+  busy(true, `Scanne 0 / ${files.length}…`);
+  try {
+    for (const f of files) {
+      try {
+        const r = await api("/api/upload?name=" + encodeURIComponent(f.webkitRelativePath || f.name), { method: "POST", body: f });
+        r.name = f.webkitRelativePath || f.name;
+        addResult(r);
+        last = r.file_id;
+      } catch (e) {
+        toast(`${f.name}: ${e.message}`, true);
+      }
+      done++;
+      busy(true, `Scanne ${done} / ${files.length}…`);
+    }
+  } finally {
+    busy(false);
+  }
+  sortFiles();
+  if (!state.selected || files.length > 1) state.selected = state.files[0]?.file_id || last;
+  renderAll();
+}
+
+async function scanPath(path) {
+  busy(true, "Scanne Pfad…");
+  try {
+    const data = await api("/api/scan_path", { body: { path, recursive: true } });
+    data.results.forEach(addResult);
+    sortFiles();
+    state.selected = state.files[0]?.file_id || null;
+    renderAll();
+    toast(`${data.results.length} Datei(en) gescannt`);
+  } catch (e) {
+    toast(e.message, true);
+  } finally {
+    busy(false);
+  }
+}
+
+function sortFiles() {
+  state.files.sort((a, b) => b.risk_score - a.risk_score || a.name.localeCompare(b.name));
+}
+
+function current() {
+  return state.files.find((f) => f.file_id === state.selected) || null;
+}
+
+/* ------------------------------------------------------------------ rendering */
+function renderAll() {
+  renderSidebar();
+  renderDetail();
+  $("#btn-export").disabled = state.files.length === 0;
+}
+
+function renderSidebar() {
+  const ul = $("#file-list");
+  $("#file-count").textContent = state.files.length ? `(${state.files.length})` : "";
+  $("#btn-clear").hidden = state.files.length === 0;
+  ul.innerHTML = state.files.map((f) => {
+    const n = f.findings.filter((x) => x.severity !== "info").length;
+    const badge = f.error ? `<span class="badge error">Fehler</span>` : `<span class="badge ${f.verdict}">${VERDICT_DE[f.verdict]}</span>`;
+    return `<li data-id="${f.file_id}" class="${f.file_id === state.selected ? "active" : ""}" title="${esc(f.path)}">
+      <span class="fname">${esc(f.name)}</span>${badge}
+      <span class="fsub">${TYPE_DE[f.filetype] || f.filetype} · Risiko ${Math.round(f.risk_score)} · ${n} Fund${n === 1 ? "" : "e"}</span></li>`;
+  }).join("");
+  const counts = { dangerous: 0, suspicious: 0, clean: 0 };
+  state.files.forEach((f) => counts[f.verdict]++);
+  const sum = $("#summary");
+  sum.hidden = state.files.length === 0;
+  sum.innerHTML = ["dangerous", "suspicious", "clean"].filter((k) => counts[k])
+    .map((k) => `<span class="badge ${k}">${counts[k]} ${VERDICT_DE[k]}</span>`).join("");
+}
+
+function renderDetail() {
+  const f = current();
+  $("#dropzone").hidden = !!f;
+  $("#detail").hidden = !f;
+  if (!f) return;
+  $("#d-name").textContent = f.name;
+  const st = f.stats || {};
+  const meta = [TYPE_DE[f.filetype] || f.filetype];
+  if (st.pages) meta.push(`${st.pages} Seite${st.pages === 1 ? "" : "n"}`);
+  if (st.chars != null) meta.push(`${st.chars.toLocaleString("de-DE")} Zeichen`);
+  if (st.hidden_chars) meta.push(`${st.hidden_chars.toLocaleString("de-DE")} unsichtbar`);
+  if (st.encoding) meta.push(st.encoding);
+  if (f.path && f.path !== f.name) meta.push(f.path);
+  $("#d-meta").innerHTML = meta.map((m) => `<span>${esc(m)}</span>`).join("");
+  $("#d-score").textContent = Math.round(f.risk_score);
+  $("#d-verdict").textContent = f.error ? "Fehler beim Lesen" : VERDICT_DE[f.verdict];
+  const color = f.verdict === "dangerous" ? "var(--sev-critical)" : f.verdict === "suspicious" ? "var(--sev-medium)" : "var(--good)";
+  $("#d-bar").style.width = Math.max(3, f.risk_score) + "%";
+  $("#d-bar").style.background = color;
+  $("#d-verdict").style.color = color;
+  $("#t-count").textContent = f.findings.length;
+  $$(".tab").forEach((t) => t.classList.toggle("active", t.dataset.tab === state.tab));
+  ["findings", "document", "preview"].forEach((t) => ($("#tab-" + t).hidden = t !== state.tab));
+  if (state.tab === "findings") renderFindings(f);
+  if (state.tab === "document") renderDocument(f);
+  if (state.tab === "preview") renderPreview(f);
+}
+
+function visible(s) {
+  // Make invisible / control characters visible as chips; long runs are compacted.
+  let out = "";
+  const cps = Array.from(String(s ?? ""));
+  for (let i = 0; i < cps.length; i++) {
+    const cp = cps[i].codePointAt(0);
+    if (!isInvisible(cp)) { out += esc(cps[i]); continue; }
+    let j = i;
+    while (j < cps.length && isInvisible(cps[j].codePointAt(0))) j++;
+    const run = j - i;
+    if (run > 6) {
+      out += cps.slice(i, i + 3).map((c) => `<span class="inv">${cpLabel(c.codePointAt(0))}</span>`).join("") +
+        `<span class="inv-run" title="${run} unsichtbare Zeichen">+${run - 3} weitere unsichtbare</span>`;
+    } else {
+      out += cps.slice(i, j).map((c) => `<span class="inv">${cpLabel(c.codePointAt(0))}</span>`).join("");
+    }
+    i = j - 1;
+  }
+  return out;
+}
+function cpLabel(cp) { return "U+" + cp.toString(16).toUpperCase().padStart(4, "0"); }
+function isInvisible(cp) {
+  return (cp >= 0x200b && cp <= 0x200f) || (cp >= 0x202a && cp <= 0x202e) || (cp >= 0x2060 && cp <= 0x206f) ||
+    cp === 0xfeff || cp === 0xad || cp === 0x34f || cp === 0x180e || cp === 0x61c || (cp >= 0xfe00 && cp <= 0xfe0f) ||
+    (cp >= 0xe0000 && cp <= 0xe01ef) || cp === 0x1b || (cp < 0x20 && cp !== 9 && cp !== 10 && cp !== 13) ||
+    (cp >= 0x7f && cp <= 0x9f) || cp === 0x115f || cp === 0x1160 || cp === 0x3164 || cp === 0xffa0 ||
+    (cp >= 0xfff9 && cp <= 0xfffb) || (cp >= 0xe000 && cp <= 0xf8ff);
+}
+// Evidence strings from the server already contain ⟦U+XXXX⟧ markers. Runs are compacted.
+function evidenceHtml(s) {
+  const html = esc(s).replace(/(⟦U\+[0-9A-F]{4,6}⟧)+/g, (run) => {
+    const parts = run.match(/⟦U\+([0-9A-F]{4,6})⟧/g);
+    if (parts.length <= 3) return parts.map((p) => `<span class="inv">${p.slice(1, -1)}</span>`).join("");
+    return `<span class="inv-run" title="${parts.length} unsichtbare Zeichen">${parts.length}× unsichtbar (${parts[0].slice(1, -1)}…)</span>`;
+  });
+  return html;
+}
+
+function locText(x) {
+  const l = x.location;
+  if (l.target === "pdf_meta") return "Metadaten";
+  if (l.target === "pdf_js") return "Dokument-Aktionen";
+  if (l.target === "pdf_embedded") return "Anhang";
+  if (l.page != null) return `Seite ${l.page + 1}`;
+  if (l.line) return `Zeile ${l.line}`;
+  return "";
+}
+
+function renderFindings(f) {
+  const box = $("#tab-findings");
+  if (f.error) {
+    box.innerHTML = `<div class="empty">Die Datei konnte nicht analysiert werden: ${esc(f.error)}</div>`;
+    return;
+  }
+  if (!f.findings.length) {
+    box.innerHTML = `<div class="empty ok">✔ Keine Auffälligkeiten gefunden.</div>`;
+    return;
+  }
+  const sel = state.choice[f.file_id];
+  let html = "";
+  if (f.stats && f.stats.ocr_pages && f.stats.ocr_pages.length) {
+    html += `<div class="note">Seiten mit OCR-Textebene erkannt (${f.stats.ocr_pages.join(", ")}): unsichtbarer Text über Scans ist dort normal und wird nicht als versteckt gewertet.</div>`;
+  }
+  const groups = [["Gefährlich", (x) => x.score >= 65], ["Verdächtig", (x) => x.score >= 20 && x.score < 65], ["Hinweise", (x) => x.score < 20]];
+  for (const [label, pred] of groups) {
+    const items = f.findings.filter(pred);
+    if (!items.length) continue;
+    html += `<div class="group-title">${label} (${items.length})</div>`;
+    html += items.map((x) => `
+      <article class="finding ${x.severity}" id="card-${x.id}">
+        <input type="checkbox" data-fid="${x.id}" ${sel.has(x.id) ? "checked" : ""} ${x.removable ? "" : "disabled"}
+          title="${x.removable ? "Beim Bereinigen entfernen" : "Nicht automatisch entfernbar"}" aria-label="Fund entfernen">
+        <div>
+          <div class="f-top">
+            <span class="badge sev-${x.severity}">${SEV_DE[x.severity]} · ${Math.round(x.score)}</span>
+            <span class="f-title">${esc(x.title)}</span>
+            <span class="f-loc">${esc(locText(x))}</span>
+          </div>
+          <div class="f-desc">${esc(x.description)}</div>
+          ${x.evidence ? `<div class="f-block"><div class="lbl">Fundstelle</div><pre>${evidenceHtml(x.evidence)}</pre></div>` : ""}
+          ${x.decoded && x.decoded !== x.evidence ? `<div class="f-block decoded"><div class="lbl">Versteckter / dekodierter Inhalt</div><pre>${esc(x.decoded)}</pre></div>` : ""}
+          <div class="f-actions">
+            ${hasDocLocation(f, x) ? `<button class="link" data-show="${x.id}">Im Dokument zeigen</button>` : ""}
+            <span class="muted mono" style="font-size:11px">${esc(x.rule)}</span>
+          </div>
+        </div>
+      </article>`).join("");
+  }
+  box.innerHTML = html;
+}
+
+function hasDocLocation(f, x) {
+  if (f.filetype === "pdf") return (x.location.view_rects || []).length > 0;
+  return x.location.start != null;
+}
+
+/* ---------- document view ---------- */
+function renderDocument(f, focusId) {
+  const box = $("#tab-document");
+  if (f.filetype === "pdf") return renderPdf(f, box, focusId);
+  // Offsets from the server are Unicode code points; JS strings are UTF-16.
+  const chars = Array.from(f.text_preview || "");
+  const n = chars.length;
+  const sevRank = new Int8Array(n).fill(-1);
+  const owner = new Int32Array(n).fill(-1);
+  const anchors = new Map();
+  f.findings.forEach((x, i) => {
+    const l = x.location;
+    const ranges = (l.ranges && l.ranges.length) ? l.ranges.map((r) => [r[0], r[1]]) : (l.start != null ? [[l.start, l.end]] : []);
+    if (!ranges.length) return;
+    const rank = SEV_ORDER.indexOf(x.severity);
+    const a = Math.min(ranges[0][0], n);
+    if (!anchors.has(a)) anchors.set(a, []);
+    anchors.get(a).push(x.id);
+    for (const [s, e] of ranges) {
+      for (let k = Math.max(0, s); k < Math.min(e, n); k++) {
+        if (rank > sevRank[k]) { sevRank[k] = rank; owner[k] = i; }
+      }
+    }
+  });
+  const parts = [];
+  let k = 0;
+  while (k < n) {
+    let j = k + 1;
+    while (j < n && owner[j] === owner[k] && !anchors.has(j)) j++;
+    if (anchors.has(k)) parts.push(anchors.get(k).map((id) => `<a id="anc-${id}"></a>`).join(""));
+    const seg = chars.slice(k, j).join("");
+    if (owner[k] >= 0) {
+      const x = f.findings[owner[k]];
+      parts.push(`<mark class="${x.severity}" data-card="${x.id}" title="${esc(x.title)}">${visible(seg)}</mark>`);
+    } else {
+      parts.push(visible(seg));
+    }
+    k = j;
+  }
+  const legend = `<div class="legend">Markierungen: ${["critical", "high", "medium", "low"].map((s) => `<span><i class="sev-${s}"></i>${SEV_DE[s]}</span>`).join("")}
+    <span>· <span class="inv">U+200B</span> = unsichtbares Zeichen</span>
+    ${f.stats && f.stats.truncated_preview ? "<span>· Vorschau gekürzt</span>" : ""}</div>`;
+  box.innerHTML = legend + `<div class="docview mono">${parts.join("")}</div>`;
+  if (focusId) {
+    const a = document.getElementById("anc-" + focusId);
+    if (a) {
+      a.scrollIntoView({ block: "center" });
+      const m = a.nextElementSibling;
+      if (m && m.tagName === "MARK") { m.classList.add("flash"); }
+    }
+  }
+}
+
+function renderPdf(f, box, focusId) {
+  const sizes = (f.stats && f.stats.page_sizes) || [];
+  const byPage = new Map();
+  f.findings.forEach((x) => (x.location.view_rects || []).forEach((r) => {
+    if (!byPage.has(r[0])) byPage.set(r[0], []);
+    byPage.get(r[0]).push([x, r]);
+  }));
+  const pages = sizes.map((sz, p) => {
+    const hls = (byPage.get(p) || []).map(([x, r]) => {
+      const off = r[3] <= 0 || r[4] <= 0 || r[1] >= 1 || r[2] >= 1;
+      const x0 = Math.min(Math.max(r[1], 0), 0.99), y0 = Math.min(Math.max(r[2], 0), 0.99);
+      const w = Math.max(Math.min(r[3], 1) - x0, 0.006), h = Math.max(Math.min(r[4], 1) - y0, 0.006);
+      return `<div class="pdf-hl ${x.severity}${off ? " offpage" : ""}" data-card="${x.id}" data-hl="${x.id}" title="${esc(x.title)}${off ? " (außerhalb der Seite)" : ""}"
+        style="left:${x0 * 100}%;top:${y0 * 100}%;width:${w * 100}%;height:${h * 100}%"></div>`;
+    }).join("");
+    const width = Math.min(900, sz[0] * 1.5);
+    return `<div class="pdf-page" style="width:${width}px" id="pdfp-${p}"><span class="pno">Seite ${p + 1}</span>
+      <img loading="lazy" alt="Seite ${p + 1}" src="/api/page?id=${f.file_id}&page=${p}&zoom=1.5&t=${encodeURIComponent(TOKEN)}"
+        style="aspect-ratio:${sz[0]}/${sz[1]}">${hls}</div>`;
+  }).join("");
+  box.innerHTML = `<div class="note">Rote Rahmen markieren Text, den Menschen nicht sehen können (z. B. weiß auf weiß, winzig, verdeckt, außerhalb der Seite). Gestrichelt = außerhalb des sichtbaren Bereichs.</div>
+    <div class="pdf-pages">${pages || '<div class="empty">Keine Seiten</div>'}</div>`;
+  if (focusId) {
+    const el = box.querySelector(`[data-hl="${focusId}"]`);
+    if (el) { el.scrollIntoView({ block: "center" }); el.classList.add("flash"); }
+  }
+}
+
+/* ---------- cleaned preview ---------- */
+async function renderPreview(f) {
+  const box = $("#tab-preview");
+  const ids = Array.from(state.choice[f.file_id] || []);
+  box.innerHTML = `<div class="empty">Erzeuge bereinigte Vorschau…</div>`;
+  try {
+    const data = await api("/api/preview", { body: { id: f.file_id, ids } });
+    if (state.selected !== f.file_id || state.tab !== "preview") return;
+    const a = data.after;
+    const cls = a.verdict === "clean" ? "note ok" : "note";
+    const rest = a.findings.filter((x) => x.score >= 20);
+    box.innerHTML = `<div class="${cls}"><b>${data.removed}</b> Fund(e) entfernt. Risiko danach: <b>${Math.round(a.risk_score)}/100</b> – ${VERDICT_DE[a.verdict]}.
+      ${rest.length ? `<br>Verbleibend: ${rest.map((x) => esc(x.title)).join(" · ")}` : ""}
+      ${f.filetype === "pdf" ? "<br><span class='muted'>Für PDFs wird der Text der bereinigten PDF-Datei angezeigt. Versteckte Textstellen wurden per Schwärzung (ohne sichtbare Box) entfernt.</span>" : ""}</div>
+      <div class="docview mono">${visible(data.text)}</div>`;
+  } catch (e) {
+    box.innerHTML = `<div class="empty">Fehler: ${esc(e.message)}</div>`;
+  }
+}
+
+/* ------------------------------------------------------------------ actions */
+async function downloadCleaned() {
+  const f = current();
+  if (!f) return;
+  try {
+    const res = await api("/api/download", { body: { id: f.file_id, ids: Array.from(state.choice[f.file_id]) }, raw: true });
+    const blob = await res.blob();
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = f.name.split("/").pop();
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+  } catch (e) {
+    toast(e.message, true);
+  }
+}
+
+function openExport() {
+  $("#export-result").innerHTML = "";
+  if (!$("#export-dir").value && state.info) $("#export-dir").value = state.info.default_export_dir;
+  $("#dlg-export").showModal();
+}
+
+async function doExport(ev) {
+  ev.preventDefault();
+  const onlyFindings = $("#export-only-findings").checked;
+  const items = state.files.filter((f) => !f.error && (!onlyFindings || f.findings.length))
+    .map((f) => ({ id: f.file_id, ids: Array.from(state.choice[f.file_id] || []) }));
+  if (!items.length) { toast("Keine Dateien zum Exportieren", true); return; }
+  busy(true, "Bereinige und exportiere…");
+  try {
+    const data = await api("/api/export", { body: { out_dir: $("#export-dir").value.trim(), items } });
+    $("#export-result").innerHTML = `<div class="note ok">Export abgeschlossen: <b class="mono">${esc(data.out_dir)}</b>
+      <ul class="export-list">${data.summary.map((s) => `<li><span>${esc(s.file)}</span><span>Risiko ${Math.round(s.before)} → <b>${Math.round(s.after)}</b> · ${s.removed} entfernt</span></li>`).join("")}</ul>
+      <p><button class="btn small" type="button" id="open-folder">Ordner öffnen</button></p></div>`;
+    $("#open-folder").onclick = () => api("/api/open_folder", { body: { path: data.out_dir } }).catch((e) => toast(e.message, true));
+    if (state.info) state.info.default_export_dir = $("#export-dir").value;
+  } catch (e) {
+    $("#export-result").innerHTML = `<div class="note" style="border-color:var(--sev-critical)">Fehler: ${esc(e.message)}</div>`;
+  } finally {
+    busy(false);
+  }
+}
+
+function setSelection(mode) {
+  const f = current();
+  if (!f) return;
+  const set = new Set();
+  f.findings.forEach((x) => {
+    if (!x.removable) return;
+    if (mode === "all" || (mode === "rec" && x.default_remove)) set.add(x.id);
+  });
+  state.choice[f.file_id] = set;
+  renderDetail();
+}
+
+/* ------------------------------------------------------------------ events */
+function initTheme() {
+  let t = null;
+  try { t = localStorage.getItem("pif-theme"); } catch (e) { /* storage blocked */ }
+  if (t) document.documentElement.dataset.theme = t;
+  $("#btn-theme").onclick = () => {
+    const dark = document.documentElement.dataset.theme
+      ? document.documentElement.dataset.theme === "dark"
+      : matchMedia("(prefers-color-scheme: dark)").matches;
+    const next = dark ? "light" : "dark";
+    document.documentElement.dataset.theme = next;
+    try { localStorage.setItem("pif-theme", next); } catch (e) { /* ignore */ }
+  };
+}
+
+function initEvents() {
+  $("#file-input").onchange = (e) => { uploadFiles(e.target.files); e.target.value = ""; };
+  $("#dir-input").onchange = (e) => { uploadFiles(e.target.files); e.target.value = ""; };
+  $("#btn-path").onclick = () => { $("#dlg-path").showModal(); $("#path-input").focus(); };
+  $("#path-go").onclick = (e) => {
+    e.preventDefault();
+    const p = $("#path-input").value.trim();
+    $("#dlg-path").close();
+    if (p) scanPath(p);
+  };
+  $("#btn-export").onclick = openExport;
+  $("#export-go").onclick = doExport;
+  $("#btn-download").onclick = downloadCleaned;
+  $("#sel-rec").onclick = () => setSelection("rec");
+  $("#sel-all").onclick = () => setSelection("all");
+  $("#sel-none").onclick = () => setSelection("none");
+  $("#btn-clear").onclick = async () => {
+    await api("/api/clear", { body: {} }).catch(() => {});
+    state.files = []; state.selected = null; state.choice = {};
+    renderAll();
+  };
+  $("#file-list").onclick = (e) => {
+    const li = e.target.closest("li[data-id]");
+    if (!li) return;
+    state.selected = li.dataset.id;
+    renderAll();
+  };
+  $$(".tab").forEach((t) => (t.onclick = () => { state.tab = t.dataset.tab; renderDetail(); }));
+  $("#tab-findings").addEventListener("change", (e) => {
+    const cb = e.target.closest("input[data-fid]");
+    if (!cb) return;
+    const set = state.choice[state.selected];
+    if (cb.checked) set.add(cb.dataset.fid); else set.delete(cb.dataset.fid);
+  });
+  $("#tab-findings").addEventListener("click", (e) => {
+    const b = e.target.closest("[data-show]");
+    if (!b) return;
+    state.tab = "document";
+    renderDetail();
+    renderDocument(current(), b.dataset.show);
+  });
+  $("#tab-document").addEventListener("click", (e) => {
+    const m = e.target.closest("[data-card]");
+    if (!m) return;
+    state.tab = "findings";
+    renderDetail();
+    const card = document.getElementById("card-" + m.dataset.card);
+    if (card) { card.scrollIntoView({ block: "center" }); card.animate([{ outline: "3px solid var(--accent)" }, { outline: "0" }], 1600); }
+  });
+  // drag & drop anywhere
+  let depth = 0;
+  document.addEventListener("dragenter", (e) => { if (e.dataTransfer.types.includes("Files")) { depth++; document.body.classList.add("drag"); } });
+  document.addEventListener("dragleave", () => { depth = Math.max(0, depth - 1); if (!depth) document.body.classList.remove("drag"); });
+  document.addEventListener("dragover", (e) => e.preventDefault());
+  document.addEventListener("drop", async (e) => {
+    e.preventDefault();
+    depth = 0;
+    document.body.classList.remove("drag");
+    const files = await collectDropped(e.dataTransfer);
+    uploadFiles(files);
+  });
+}
+
+// Supports dropped folders through the entries API.
+async function collectDropped(dt) {
+  const entries = Array.from(dt.items || []).map((i) => i.webkitGetAsEntry && i.webkitGetAsEntry()).filter(Boolean);
+  if (!entries.length) return Array.from(dt.files);
+  const out = [];
+  const walk = (entry, prefix) => new Promise((resolve) => {
+    if (entry.isFile) {
+      entry.file((file) => {
+        Object.defineProperty(file, "webkitRelativePath", { value: prefix + file.name });
+        out.push(file);
+        resolve();
+      }, () => resolve());
+    } else if (entry.isDirectory) {
+      const reader = entry.createReader();
+      const all = [];
+      const read = () => reader.readEntries(async (batch) => {
+        if (!batch.length) {
+          for (const b of all) await walk(b, prefix + entry.name + "/");
+          resolve();
+        } else { all.push(...batch); read(); }
+      }, () => resolve());
+      read();
+    } else resolve();
+  });
+  for (const en of entries) await walk(en, "");
+  const ok = /\.(pdf|md|markdown|mdown|mkd|mdx|txt|text|log|csv|tsv|json|jsonl|xml|ya?ml|ini|cfg|rst|tex|srt|vtt|html?|xhtml|svg|eml)$/i;
+  return out.filter((f) => ok.test(f.name));
+}
+
+async function init() {
+  initTheme();
+  initEvents();
+  try {
+    state.info = await api("/api/info");
+    const existing = await api("/api/files");
+    existing.results.forEach(addResult);
+    sortFiles();
+    state.selected = state.files[0]?.file_id || null;
+    // Deep links: #file=<name>&tab=document
+    const h = new URLSearchParams(location.hash.slice(1));
+    if (h.get("file")) {
+      const hit = state.files.find((f) => f.name === h.get("file"));
+      if (hit) state.selected = hit.file_id;
+    }
+    if (["findings", "document", "preview"].includes(h.get("tab"))) state.tab = h.get("tab");
+  } catch (e) {
+    toast("Verbindung zum lokalen Server fehlgeschlagen: " + e.message, true);
+  }
+  renderAll();
+}
+
+init();

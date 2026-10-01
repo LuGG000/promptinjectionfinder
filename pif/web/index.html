@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="pif-token" content="__PIF_TOKEN__">
+<title>PromptInjectionFinder</title>
+<link rel="stylesheet" href="/static/style.css">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%233b5bdb'/%3E%3Ccircle cx='14' cy='14' r='7' fill='none' stroke='white' stroke-width='3'/%3E%3Cpath d='M19 19l6 6' stroke='white' stroke-width='3' stroke-linecap='round'/%3E%3C/svg%3E">
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">
+    <svg viewBox="0 0 32 32" width="28" height="28" aria-hidden="true"><rect width="32" height="32" rx="8" fill="var(--accent)"/><circle cx="14" cy="14" r="7" fill="none" stroke="#fff" stroke-width="3"/><path d="M19 19l6 6" stroke="#fff" stroke-width="3" stroke-linecap="round"/></svg>
+    <div>
+      <div class="brand-name">PromptInjectionFinder</div>
+      <div class="brand-sub">Offline · deterministisch · v__PIF_VERSION__</div>
+    </div>
+  </div>
+  <div class="top-actions">
+    <label class="btn primary" for="file-input">Dateien wählen</label>
+    <input id="file-input" type="file" multiple hidden accept=".pdf,.md,.markdown,.txt,.html,.htm,.csv,.json,.xml,.yaml,.yml,.log,.rst,.tex,.eml">
+    <label class="btn" for="dir-input">Ordner hochladen</label>
+    <input id="dir-input" type="file" webkitdirectory multiple hidden>
+    <button class="btn" id="btn-path">Pfad scannen</button>
+    <button class="btn accent" id="btn-export" disabled>Bereinigen &amp; exportieren</button>
+    <button class="btn icon" id="btn-theme" title="Hell/Dunkel umschalten" aria-label="Design umschalten">◐</button>
+  </div>
+</header>
+
+<main class="layout">
+  <aside class="sidebar">
+    <div class="side-head">
+      <span>Dateien <span id="file-count" class="muted"></span></span>
+      <button class="link" id="btn-clear" hidden>Alle entfernen</button>
+    </div>
+    <div id="summary" class="summary" hidden></div>
+    <ul id="file-list" class="file-list"></ul>
+  </aside>
+
+  <section class="content">
+    <div id="dropzone" class="dropzone">
+      <div class="drop-inner">
+        <svg viewBox="0 0 48 48" width="56" height="56" aria-hidden="true"><path d="M24 31V9m0 0l-8 8m8-8l8 8" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/><path d="M8 30v6a4 4 0 004 4h24a4 4 0 004-4v-6" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg>
+        <h2>Dokumente hier ablegen</h2>
+        <p>PDF, Markdown, Text und HTML werden lokal auf versteckte Prompt Injections geprüft:<br>
+          weißer/grauer/winziger Text, verdeckter Text, unsichtbare Unicode-Zeichen, Emoji-Smuggling,
+          Homoglyphen, kodierte Payloads, versteckte Kommentare und mehr.</p>
+        <p class="muted">Keine Daten verlassen diesen Rechner.</p>
+      </div>
+    </div>
+
+    <div id="detail" hidden>
+      <div class="detail-head">
+        <div class="dh-left">
+          <h1 id="d-name"></h1>
+          <div class="dh-meta" id="d-meta"></div>
+        </div>
+        <div class="risk" id="d-risk">
+          <div class="risk-num"><span id="d-score">0</span><small>/100</small></div>
+          <div class="risk-label" id="d-verdict"></div>
+          <div class="risk-bar"><div id="d-bar"></div></div>
+        </div>
+      </div>
+
+      <div class="toolbar">
+        <div class="tabs" role="tablist">
+          <button class="tab active" data-tab="findings" role="tab">Funde <span id="t-count" class="pill"></span></button>
+          <button class="tab" data-tab="document" role="tab">Dokument</button>
+          <button class="tab" data-tab="preview" role="tab">Bereinigte Vorschau</button>
+        </div>
+        <div class="tb-actions">
+          <button class="btn small" id="sel-rec">Empfohlene wählen</button>
+          <button class="btn small" id="sel-all">Alle</button>
+          <button class="btn small" id="sel-none">Keine</button>
+          <button class="btn small primary" id="btn-download">Bereinigt herunterladen</button>
+        </div>
+      </div>
+
+      <div id="tab-findings" class="tab-body"></div>
+      <div id="tab-document" class="tab-body" hidden></div>
+      <div id="tab-preview" class="tab-body" hidden></div>
+    </div>
+  </section>
+</main>
+
+<dialog id="dlg-path" class="dialog">
+  <form method="dialog">
+    <h2>Lokalen Pfad scannen</h2>
+    <p class="muted">Datei oder Ordner auf diesem Rechner (Unterordner werden mitgescannt).</p>
+    <input id="path-input" type="text" placeholder="C:\Users\…\Dokumente" autocomplete="off">
+    <div class="dlg-actions">
+      <button class="btn" value="cancel">Abbrechen</button>
+      <button class="btn primary" id="path-go" value="go">Scannen</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="dlg-export" class="dialog wide">
+  <form method="dialog">
+    <h2>Bereinigen &amp; exportieren</h2>
+    <p class="muted">Alle Dateien werden mit den jeweils ausgewählten Funden bereinigt und zusammen mit einem Bericht
+      (HTML + JSON) in den Zielordner geschrieben. Die Originale bleiben unverändert.</p>
+    <label class="field">Zielordner
+      <input id="export-dir" type="text" autocomplete="off">
+    </label>
+    <label class="check"><input type="checkbox" id="export-only-findings" checked> Nur Dateien mit Funden exportieren</label>
+    <div id="export-result"></div>
+    <div class="dlg-actions">
+      <button class="btn" value="cancel">Schließen</button>
+      <button class="btn accent" id="export-go" value="go">Exportieren</button>
+    </div>
+  </form>
+</dialog>
+
+<div id="toast" class="toast" hidden></div>
+<div id="busy" class="busy" hidden><div class="spinner"></div><div id="busy-text">Scanne…</div></div>
+
+<script src="/static/app.js"></script>
+</body>
+</html>

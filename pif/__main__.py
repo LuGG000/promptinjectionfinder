@@ -87,7 +87,7 @@ def cmd_clean(args) -> int:
 def cmd_gui(args) -> int:
     from .server import run
 
-    run(host=args.host, port=args.port, open_browser=not args.no_browser)
+    run(host=args.host, port=args.port, open_browser=not args.no_browser, preload=args.paths)
     return 0
 
 
@@ -113,6 +113,7 @@ def main(argv=None) -> int:
     c.set_defaults(func=cmd_clean)
 
     g = sub.add_parser("gui", help="Weboberfläche starten (offline, localhost)")
+    g.add_argument("paths", nargs="*", help="optional: Dateien/Ordner direkt beim Start scannen")
     g.add_argument("--host", default="127.0.0.1")
     g.add_argument("--port", type=int, default=8765)
     g.add_argument("--no-browser", action="store_true")
@@ -120,7 +121,7 @@ def main(argv=None) -> int:
 
     args = p.parse_args(argv)
     if not args.cmd:
-        args = p.parse_args(["gui"] + (argv or []))
+        args = p.parse_args(["gui"])
     return args.func(args)
 
 
