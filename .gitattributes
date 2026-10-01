@@ -1,5 +1,8 @@
 * text=auto
 *.sh text eol=lf
+*.command text eol=lf
+*.bat text eol=crlf
+*.yml text eol=lf
 samples/** -text
 tests/fixtures/** -text
 *.pdf binary

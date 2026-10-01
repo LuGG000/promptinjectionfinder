@@ -100,15 +100,25 @@
   <form method="dialog">
     <h2>Bereinigen &amp; exportieren</h2>
     <p class="muted">Alle Dateien werden mit den jeweils ausgewählten Funden bereinigt und zusammen mit einem Bericht
-      (HTML + JSON) in den Zielordner geschrieben. Die Originale bleiben unverändert.</p>
-    <label class="field">Zielordner
-      <input id="export-dir" type="text" autocomplete="off">
-    </label>
+      (HTML + JSON) exportiert. Die Originale bleiben unverändert.</p>
     <label class="check"><input type="checkbox" id="export-only-findings" checked> Nur Dateien mit Funden exportieren</label>
+    <div class="export-choice">
+      <div>
+        <b>Als ZIP herunterladen</b>
+        <p class="muted">Landet wie jeder Download im Download-Ordner des Browsers.</p>
+        <button class="btn accent" id="export-zip" type="button">ZIP herunterladen</button>
+      </div>
+      <div>
+        <b>Direkt in einen Ordner speichern</b>
+        <label class="field">Zielordner
+          <input id="export-dir" type="text" autocomplete="off">
+        </label>
+        <button class="btn" id="export-go" type="button">In Ordner speichern</button>
+      </div>
+    </div>
     <div id="export-result"></div>
     <div class="dlg-actions">
       <button class="btn" value="cancel">Schließen</button>
-      <button class="btn accent" id="export-go" value="go">Exportieren</button>
     </div>
   </form>
 </dialog>

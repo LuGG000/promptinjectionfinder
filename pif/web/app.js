@@ -365,13 +365,7 @@ async function downloadCleaned() {
   if (!f) return;
   try {
     const res = await api("/api/download", { body: { id: f.file_id, ids: Array.from(state.choice[f.file_id]) }, raw: true });
-    const blob = await res.blob();
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    a.download = f.name.split("/").pop();
-    document.body.appendChild(a);
-    a.click();
-    setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+    saveBlob(await res.blob(), f.name.split("/").pop());
   } catch (e) {
     toast(e.message, true);
   }
@@ -383,11 +377,40 @@ function openExport() {
   $("#dlg-export").showModal();
 }
 
+function exportItems() {
+  const onlyFindings = $("#export-only-findings").checked;
+  return state.files.filter((f) => !f.error && (!onlyFindings || f.findings.length))
+    .map((f) => ({ id: f.file_id, ids: Array.from(state.choice[f.file_id] || []) }));
+}
+
+function saveBlob(blob, name) {
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1500);
+}
+
+async function doExportZip(ev) {
+  ev.preventDefault();
+  const items = exportItems();
+  if (!items.length) { toast("Keine Dateien zum Exportieren", true); return; }
+  busy(true, "Bereinige und packe ZIP…");
+  try {
+    const res = await api("/api/export_zip", { body: { items }, raw: true });
+    saveBlob(await res.blob(), "PromptInjectionFinder_Export.zip");
+    $("#export-result").innerHTML = `<div class="note ok">ZIP mit ${items.length} bereinigten Datei(en) und Bericht wurde heruntergeladen.</div>`;
+  } catch (e) {
+    $("#export-result").innerHTML = `<div class="note" style="border-color:var(--sev-critical)">Fehler: ${esc(e.message)}</div>`;
+  } finally {
+    busy(false);
+  }
+}
+
 async function doExport(ev) {
   ev.preventDefault();
-  const onlyFindings = $("#export-only-findings").checked;
-  const items = state.files.filter((f) => !f.error && (!onlyFindings || f.findings.length))
-    .map((f) => ({ id: f.file_id, ids: Array.from(state.choice[f.file_id] || []) }));
+  const items = exportItems();
   if (!items.length) { toast("Keine Dateien zum Exportieren", true); return; }
   busy(true, "Bereinige und exportiere…");
   try {
@@ -443,6 +466,7 @@ function initEvents() {
   };
   $("#btn-export").onclick = openExport;
   $("#export-go").onclick = doExport;
+  $("#export-zip").onclick = doExportZip;
   $("#btn-download").onclick = downloadCleaned;
   $("#sel-rec").onclick = () => setSelection("rec");
   $("#sel-all").onclick = () => setSelection("all");

@@ -15,14 +15,27 @@ entfernt sie auf Wunsch.
 
 ## Schnellstart
 
-Voraussetzung ist Python ≥ 3.9. Die Abhängigkeiten werden einmalig installiert, danach läuft alles offline.
+Die Bedienung läuft komplett per Klick im Browser. Ein Startskript legt beim ersten Start eine eigene Umgebung (`.venv`)
+an und installiert die zwei Abhängigkeiten. Danach läuft alles offline, und es wird nichts systemweit installiert.
+
+| System | Starten | Voraussetzung |
+|---|---|---|
+| **Windows** 10/11 | Doppelklick auf **`run_windows.bat`** | Python ≥ 3.9 von python.org (Haken „Add to PATH“) oder `winget install Python.Python.3.12` |
+| **macOS** (Intel & Apple Silicon) | Doppelklick auf **`run_mac.command`** (beim ersten Mal: Rechtsklick → Öffnen) | `brew install python` oder python.org |
+| **Debian / Ubuntu / Mint** | `./run_linux_mac.sh` | `sudo apt install python3 python3-venv` |
+| **Arch / Manjaro** | `./run_linux_mac.sh` | `sudo pacman -S python` |
+| **Fedora / openSUSE** | `./run_linux_mac.sh` | `sudo dnf install python3` bzw. `sudo zypper install python3` |
+| **Windows ohne Python** | `PromptInjectionFinder.exe` (siehe unten) | – |
+
+Der Browser öffnet sich automatisch unter `http://127.0.0.1:8765`. Das Terminalfenster muss offen bleiben, denn es ist der
+lokale Server; Schließen beendet das Programm. Ist der Port belegt, wird automatisch der nächste freie genommen.
+
+Manuell, falls gewünscht:
 
 ```bash
-pip install -r requirements.txt
-python -m pif            # startet die Weboberfläche und öffnet den Browser
+python3 -m venv .venv && .venv/bin/pip install -r requirements.txt   # Windows: .venv\Scripts\pip
+.venv/bin/python -m pif                                              # startet die Oberfläche
 ```
-
-Unter Windows genügt ein Doppelklick auf **`start.bat`**, unter Linux/macOS `./start.sh`.
 
 ### Weboberfläche
 
@@ -33,8 +46,11 @@ Unter Windows genügt ein Doppelklick auf **`start.bat`**, unter Linux/macOS `./
    **Dokument:** Bei Text, Markdown und HTML wird die Fundstelle farbig markiert und unsichtbare Zeichen erscheinen als Chips.
    Bei PDFs wird die gerenderte Seite angezeigt, und rote Rahmen zeigen den unsichtbaren Text.
    **Bereinigte Vorschau:** zeigt das Ergebnis der Bereinigung samt neuer Risikobewertung.
-4. **Bereinigt herunterladen** liefert eine einzelne Datei. **Bereinigen & exportieren** schreibt alle Dateien bereinigt in einen
-   Ordner, zusammen mit `report.html` und `report.json`. Die Originale bleiben unverändert.
+4. **Bereinigt herunterladen** liefert eine einzelne Datei. **Bereinigen & exportieren** bietet zwei Wege:
+   - **ZIP herunterladen:** Alle bereinigten Dateien landen samt `report.html` und `report.json` im Download-Ordner des Browsers.
+   - **In Ordner speichern:** schreibt in einen frei wählbaren Ordner und öffnet ihn auf Wunsch im Dateimanager.
+
+   Die Originale bleiben unverändert.
 
 ### Kommandozeile
 
@@ -141,6 +157,13 @@ node tests/ui_e2e.mjs http://127.0.0.1:8812/ "<pfad>\samples\angriff_rezept.md,<
 Für die Regelbasis wurden zwei Korpora harmloser Dateien als Fehlalarm-Benchmark genutzt: rund 1.500 Dateien aus npm
 (Doku, Markdown, HTML, JS) und rund 500 aus der Python-Standardbibliothek, pip und numpy. Dort liegt die Fehlalarmquote
 der Stufe *Verdächtig* bei unter 1 %.
+
+## Plattform-Tests
+
+`.gitlab-ci.yml` startet das Tool bei jedem Push genau so, wie ein Nutzer es tut (`run_linux_mac.sh`), und führt danach
+die komplette Test-Suite aus. Das passiert auf Debian 12, Ubuntu 24.04, Arch Linux und Fedora sowie mit Python 3.9 und 3.13.
+Windows wird lokal getestet (Suite, Startskript, EXE, Browser-E2E). macOS nutzt dasselbe Startskript wie Linux.
+PyMuPDF und numpy liefern fertige Pakete für macOS (Intel und Apple Silicon); mangels Mac-Runner gibt es dort aber keinen automatischen Test.
 
 ## Eigenständige EXE (optional)
 

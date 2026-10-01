@@ -123,6 +123,15 @@ try {
   check("export dialog writes folder", /Export abgeschlossen/.test(ex), ex.replace(/\s+/g, " ").slice(0, 160));
   check("export folder exists", fs.existsSync(path.join(OUT, "report.html")) && fs.existsSync(path.join(OUT, "bereinigt")));
 
+  // ZIP download straight from the browser
+  const dl = path.join(OUT, "_downloads");
+  fs.mkdirSync(dl, { recursive: true });
+  await send("Browser.setDownloadBehavior", { behavior: "allow", downloadPath: dl });
+  await js("document.querySelector('#export-zip').click()");
+  await waitFor("/ZIP mit/.test(document.querySelector('#export-result').innerText)", 60000);
+  for (let i = 0; i < 40 && !fs.existsSync(path.join(dl, "PromptInjectionFinder_Export.zip")); i++) await sleep(250);
+  check("zip download via browser", fs.existsSync(path.join(dl, "PromptInjectionFinder_Export.zip")));
+
   // theme toggle
   const before = await js("getComputedStyle(document.body).backgroundColor");
   await js("document.querySelector('#dlg-export').close(); document.querySelector('#btn-theme').click()");

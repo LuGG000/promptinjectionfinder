@@ -218,3 +218,9 @@ body.drag::after {
   .content { padding: 16px; }
   .topbar { padding: 10px 16px; }
 }
+
+.export-choice { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 12px; }
+.export-choice > div { border: 1px solid var(--border); border-radius: var(--radius); padding: 12px 14px; background: var(--panel-2); }
+.export-choice p { margin: 4px 0 10px; font-size: 13px; }
+.export-choice .field { margin: 8px 0; font-weight: 500; font-size: 13px; }
+@media (max-width: 640px) { .export-choice { grid-template-columns: 1fr; } }

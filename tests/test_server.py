@@ -92,3 +92,15 @@ def test_scan_path(base):
     st, body, _ = call(base, "/api/scan_path", {"path": SAMPLES})
     assert st == 200 and len(json.loads(body)["results"]) >= 7
     assert call(base, "/api/scan_path", {"path": os.path.join(SAMPLES, "does-not-exist")})[0] == 400
+
+
+def test_export_zip(base):
+    import io
+    import zipfile
+    with open(os.path.join(SAMPLES, "angriff_meeting.txt"), "rb") as fh:
+        res = json.loads(call(base, "/api/upload?name=angriff_meeting.txt", raw=fh.read())[1])
+    st, body, hdr = call(base, "/api/export_zip", {"items": [{"id": res["file_id"], "ids": None}]})
+    assert st == 200 and hdr.get("Content-Type") == "application/zip"
+    names = zipfile.ZipFile(io.BytesIO(body)).namelist()
+    assert "PromptInjectionFinder_Export/report.html" in names
+    assert "PromptInjectionFinder_Export/bereinigt/angriff_meeting.txt" in names

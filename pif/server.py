@@ -6,17 +6,21 @@ the browser cannot drive the local API.
 """
 from __future__ import annotations
 
+import io
 import json
 import mimetypes
 import os
 import secrets
 import socket
+import subprocess
 import sys
+import tempfile
 import threading
 import traceback
 import urllib.parse
 import uuid
 import webbrowser
+import zipfile
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from . import __version__
@@ -195,8 +199,7 @@ class Handler(BaseHTTPRequestHandler):
                 fn = urllib.parse.quote(f["name"])
                 return self._send(200, cleaned["data"], "application/octet-stream",
                                   {"Content-Disposition": f"attachment; filename*=UTF-8''{fn}"})
-            if url.path == "/api/export":
-                out_dir = os.path.expanduser((payload.get("out_dir") or "").strip().strip('"')) or default_export_dir()
+            if url.path in ("/api/export", "/api/export_zip"):
                 items = []
                 for it in payload.get("items", []):
                     f = STORE.get(it.get("id"))
@@ -204,6 +207,10 @@ class Handler(BaseHTTPRequestHandler):
                         items.append({"name": f["name"], "data": f["data"], "result": f["result"], "ids": it.get("ids")})
                 if not items:
                     return self._error("Keine Dateien zum Exportieren")
+                if url.path == "/api/export_zip":
+                    return self._send(200, _export_zip(items), "application/zip",
+                                      {"Content-Disposition": 'attachment; filename="PromptInjectionFinder_Export.zip"'})
+                out_dir = os.path.expanduser((payload.get("out_dir") or "").strip().strip('"')) or default_export_dir()
                 info = export(items, out_dir)
                 return self._json({"out_dir": info["out_dir"], "files": info["files"],
                                    "summary": [{"file": s["file"], "before": s["before"]["risk_score"],
@@ -212,12 +219,7 @@ class Handler(BaseHTTPRequestHandler):
             if url.path == "/api/open_folder":
                 path = payload.get("path", "")
                 if os.path.isdir(path):
-                    if sys.platform.startswith("win"):
-                        os.startfile(path)  # noqa: S606 - opens Explorer on the export folder
-                    elif sys.platform == "darwin":
-                        os.system(f'open "{path}"')
-                    else:
-                        os.system(f'xdg-open "{path}" >/dev/null 2>&1 &')
+                    _open_folder(path)
                     return self._json({"ok": True})
                 return self._error("Ordner nicht gefunden", 404)
             if url.path == "/api/remove":
@@ -233,6 +235,32 @@ class Handler(BaseHTTPRequestHandler):
         except Exception as exc:
             traceback.print_exc()
             return self._error(f"{type(exc).__name__}: {exc}", 500)
+
+
+def _export_zip(items) -> bytes:
+    """Export into a temporary folder and return it as ZIP (browser download, no path needed)."""
+    with tempfile.TemporaryDirectory() as tmp:
+        root = os.path.join(tmp, "PromptInjectionFinder_Export")
+        export(items, root)
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+            for dirpath, _dirs, files in os.walk(root):
+                for fn in files:
+                    full = os.path.join(dirpath, fn)
+                    zf.write(full, os.path.relpath(full, tmp))
+        return buf.getvalue()
+
+
+def _open_folder(path: str) -> None:
+    """Open a folder in the platform's file manager (no shell involved)."""
+    if sys.platform.startswith("win"):
+        os.startfile(path)  # noqa: S606
+        return
+    cmd = ["open", path] if sys.platform == "darwin" else ["xdg-open", path]
+    try:
+        subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+    except OSError:
+        pass  # no file manager available (e.g. headless server)
 
 
 def _free_port(host, port):
