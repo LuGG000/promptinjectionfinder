@@ -53,7 +53,7 @@ def _hidden_finding(text, s, e, inner, rule, title, why, base=30.0, soft=False):
         evidence=visible_repr(text[s:e][:500]),
         decoded=inner[:3000],
         location=Location(start=s, end=e, line=line_of(text, s)),
-        default_remove=bool(hits) or (not soft and words >= 3),
+        default_remove=bool(hits) or (not soft and words >= 3 and base >= 20),
         tags=["hidden"] + (["injection"] if hits else []),
     )
 
@@ -155,7 +155,7 @@ def _hidden_by_attrs(tag: str, attrs: dict) -> tuple:
     return hard, soft
 
 
-def analyze_html_structure(text: str) -> list:
+def analyze_html_structure(text: str, hidden_base: float = 35.0) -> list:
     findings = []
     css = _css_rules(text)
     stack = []  # dicts: tag, start, open_end, hidden, soft, bg, reported
@@ -169,7 +169,7 @@ def analyze_html_structure(text: str) -> list:
                 f = _hidden_finding(text, el["start"], end_outer, inner, "html.hidden_element",
                                     f"Versteckter HTML-Inhalt <{el['tag']}>",
                                     "Das Element wird durch " + "; ".join(el["hidden"]) +
-                                    " für Menschen unsichtbar gemacht, bleibt aber für KI-Modelle lesbar.", base=35.0)
+                                    " für Menschen unsichtbar gemacht, bleibt aber für KI-Modelle lesbar.", base=hidden_base)
             else:
                 f = _hidden_finding(text, el["start"], end_outer, inner, "html.low_visibility",
                                     f"Kaum sichtbarer HTML-Inhalt <{el['tag']}>",
@@ -368,14 +368,14 @@ def analyze_comments(text: str) -> list:
     return findings
 
 
-def active_content(text: str) -> list:
+def active_content(text: str, is_html: bool = False) -> list:
     findings = []
     for m in re.finditer(r"<(script|iframe|object|embed|form|meta\s+http-equiv\s*=\s*[\"']?refresh)\b", text, re.I):
         tag = m.group(1).split()[0].lower()
         findings.append(Finding(
             category="active", rule=f"markup.{tag}", title=f"Aktiver Inhalt <{tag}>",
             description="Aktive Inhalte können Daten nachladen oder senden und gehören nicht in reine Text-Dokumente.",
-            score=30.0 if tag != "meta" else 25.0, evidence=context(text, m.start(), m.end()),
+            score=(12.0 if is_html else 30.0) if tag != "meta" else (12.0 if is_html else 25.0), evidence=context(text, m.start(), m.end()),
             location=Location(start=m.start(), end=m.end(), line=line_of(text, m.start())),
             removable=False, default_remove=False))
     return findings
@@ -397,10 +397,10 @@ def analyze_markup(text: str, is_html: bool) -> list:
     findings = []
     src = text if is_html else mask_markdown_code(text)
     findings += analyze_comments(src)
-    findings += analyze_html_structure(src)
+    findings += analyze_html_structure(src, hidden_base=18.0 if is_html else 35.0)
     findings += analyze_attributes(src)
     findings += analyze_latex(src)
-    findings += active_content(src)
+    findings += active_content(src, is_html)
     if not is_html:
         findings += analyze_markdown(src)
     # evidence must show the real text, not the masked one

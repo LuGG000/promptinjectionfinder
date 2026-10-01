@@ -220,7 +220,7 @@ _RULES = [
     ("en.tool.execute", "tool", 20,
      r"(execute|run|perform|invoke|call|trigger) (the )?(following |this |these )?(shell |bash |terminal |system |python |powershell |sql |cmd )?(command|code|script|function|tool|api call|payload|commands)"),
     ("x.tool.dangerous_cmd", "tool", 70,
-     r"rm\s+-rf\s+(/|~|\*|\$home)(\s|$)|del\s+/[fsq]\s+[a-z]:\\|format\s+c:|(curl|wget)\s+(-\S+\s+)*['\"]?https?://\S+['\"]?\s*\|\s*(sudo\s+)?(ba|z)?sh\b|powershell(\.exe)?\s+-(e|enc|encodedcommand)\b|invoke-expression|\biex\s*\(|drop\s+table|;\s*shutdown\b|nc\s+-e\s|/bin/sh\s+-i|base64\s+-d\s*\|", True),
+     r"rm\s+-rf\s+(/|~|\*|\$home)(\s|$)|del\s+/[fsq]\s+[a-z]:\\|format\s+c:|(curl|wget)\s+(-\S+\s+)*['\"]?https?://\S+['\"]?\s*\|\s*(sudo\s+)?(ba|z)?sh\b|powershell(\.exe)?\s+-(e|enc|encodedcommand)\b|invoke-expression|\biex\s*\(|drop\s+table|;\s*shutdown\s+(-[hrs]|/[srf]|now)\b|nc\s+-e\s|/bin/sh\s+-i|base64\s+-d\s*\|", True),
     ("en.tool.destroy", "tool", 15,
      r"(delete|remove|wipe|erase|destroy|purge) (all )?(the |your |my |every )?(files|data|database|records|repository|repo|emails|messages|backups|documents|accounts?)"),
     ("en.tool.approve", "tool", 55,
@@ -247,7 +247,7 @@ _RULES = [
 
     # ------------------------------------------------------------------ manipulation of outputs / evaluations
     ("en.manip.positive_review", "manipulation", 62,
-     r"(give|write|provide|output|produce|generate|return) (a |an |only |the )?(very )?(positive|favorable|favourable|glowing|excellent|good|great|strong|perfect) (review|rating|assessment|evaluation|feedback|score|recommendation|summary|grade|reference)s?"),
+     r"(give|write|output|produce|generate|return) (a |an |only |the )?(very )?(positive|favorable|favourable|glowing|excellent|good|great|strong|perfect) (review|rating|assessment|evaluation|score|recommendation|summary|grade|reference)s?"),
     ("en.manip.rate_candidate", "manipulation", 75,
      r"(rate|score|rank|evaluate|grade|assess|review|judge|consider) (this|the|my|our) (candidate|applicant|paper|submission|resume|cv|document|product|application|proposal|essay|answer|student|work|code|manuscript|company|vendor) "
      r"(as |with |at |to be )?(highly|positively|the best|excellent|very good|a perfect|perfect|top|10|5|an a|outstanding|exceptional|favorabl[a-z]*|strong|the strongest|the most qualified|qualified)"),
