@@ -1,0 +1,4 @@
+* text=auto
+samples/** -text
+tests/fixtures/** -text
+*.pdf binary

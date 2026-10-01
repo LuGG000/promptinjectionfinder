@@ -45,6 +45,8 @@ def apply_edits(text: str, edits) -> str:
         if not rep and e > s:
             # Avoid "word  word" or dangling blank lines at the seam of a deletion.
             right = text[e:e + 1]
+            if right in ("\n", "\r", "") and left.endswith((" ", "\t")) and not left.endswith("\n"):
+                left = left.rstrip(" \t")
             prev = out[-1] if not left and out else left
             if right in (" ", "\t") and (prev.endswith((" ", "\t")) or not prev or prev.endswith("\n")):
                 e += 1
