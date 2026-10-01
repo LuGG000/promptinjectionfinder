@@ -16,6 +16,10 @@ entfernt sie auf Wunsch.
 
 ---
 
+> ⚠️ **Die Dateien in `samples/` enthalten absichtlich echte Prompt-Injection-Payloads** (dafür sind sie da).
+> Nicht an einen KI-Agenten geben, der in deinem Namen handeln kann (E-Mails senden, Befehle ausführen, Dinge freigeben) –
+> stattdessen mit diesem Tool scannen. Das gilt auch für die Angriffsphrasen in `pif/patterns.py` und in den Tests.
+
 ## Installation (ein Befehl)
 
 **Windows** (PowerShell):
@@ -191,11 +195,13 @@ Front-Matter, Alt-Texte und Titel, LaTeX-Tricks (`\textcolor{white}`, `\phantom`
 Base64, Hex, `\x..`, `\u....`, URL-Encoding, HTML-Entities, Binär, ROT13 und rückwärts geschriebener Text werden dekodiert
 und erneut gegen die Regelbasis geprüft.
 
-### Injection-Sprache (≈ 110 Regeln, 7 Sprachen)
+### Injection-Sprache (≈ 110 Regeln)
 Die Regeln decken Anweisungs-Überschreibung, Rollenübernahme und Jailbreaks, Systemprompt-Ausspähung, gefälschte Chat-Marker
 (`<|im_start|>`, `[INST]`, `<<SYS>>`), direkte KI-Ansprache („Hinweis an die KI“), Verschleierung („sag dem Nutzer nichts“),
 Exfiltration, Befehlsausführung und Bewertungsmanipulation ab (z. B. „give a positive review“ in Lebensläufen und Papern).
-Unterstützt werden Deutsch, Englisch, Französisch, Spanisch, Italienisch, Portugiesisch und Niederländisch.
+Alle zehn Kategorien sind auf **Englisch** (56 Regeln) und **Deutsch** (38 Regeln) abgedeckt; für Französisch, Spanisch,
+Italienisch, Portugiesisch und Niederländisch gibt es nur die Kernregel „ignoriere alle vorherigen Anweisungen“.
+Sprachunabhängige Regeln (Chat-Marker, gefährliche Shell-Befehle) gelten für jeden Text.
 
 Die Regeln laufen auf einer **normalisierten Sicht** des Textes. Dabei werden Homoglyphen gefaltet, Akzente entfernt,
 unsichtbare Zeichen ignoriert, Leetspeak (`1gn0r3`) und g e s p e r r t e Buchstaben zusammengeführt. Über eine Offset-Tabelle
@@ -231,7 +237,7 @@ pip install -r requirements-dev.txt
 python -m pytest -q
 ```
 
-Die Suite umfasst über 190 Tests: Angriffe in 7 Sprachen, 11 Verschleierungsarten, harmlose Gegenbeispiele,
+Die Suite umfasst über 190 Tests: Angriffe auf Englisch, Deutsch und in 5 weiteren Sprachen, 11 Verschleierungsarten, harmlose Gegenbeispiele,
 alle Smuggling-Techniken, 10 PDF-Versteckvarianten inklusive gedrehter Seiten und OCR-Scans, Bereinigung mit
 verschiedenen Kodierungen, Export und die Web-API inklusive Token- und DNS-Rebinding-Schutz.
 `tools/make_samples.py` erzeugt die Demo-Dateien in `samples/`.
@@ -244,9 +250,9 @@ python -m pif gui --no-browser --port 8812 &
 node tests/ui_e2e.mjs http://127.0.0.1:8812/ "<pfad>\samples\attack_recipe.md,<pfad>\samples\attack_cv.pdf" "<export-ordner>"
 ```
 
-Für die Regelbasis wurden zwei Korpora harmloser Dateien als Fehlalarm-Benchmark genutzt: rund 1.500 Dateien aus npm
-(Doku, Markdown, HTML, JS) und rund 500 aus der Python-Standardbibliothek, pip und numpy. Dort liegt die Fehlalarmquote
-der Stufe *Verdächtig* bei unter 1 %.
+Für die Regelbasis wurden harmlose Dateien als Fehlalarm-Benchmark genutzt (≈ 4.500 Dateien aus npm-Doku, der
+Python-Standardbibliothek, pip/numpy und einer HTML-Hilfe mit 2.500 Seiten): 4 von 4.522 Dateien (0,1 %) werden als
+*verdächtig* eingestuft, keine als *gefährlich*.
 
 ## Plattform-Tests
 

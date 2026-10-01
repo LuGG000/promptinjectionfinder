@@ -11,10 +11,15 @@ encoded commands. PromptInjectionFinder makes exactly this content visible, rate
 - **Deterministic:** no AI, no randomness. The same input always gives the same result, and every finding names the rule that produced it.
 - **Offline:** the server only listens on `127.0.0.1` and loads no external resources.
 - **Traceable:** every finding shows the evidence, the reason, the decoded hidden content and its position in the document.
-- **English and German:** the analysis understands English and German (plus French, Spanish, Italian, Portuguese and Dutch
-  injection phrases). The interface has an **EN/DE** switch; findings, reports and exports follow the chosen language.
+- **English and German:** the rule base fully covers English and German (the core “ignore previous instructions” pattern
+  also French, Spanish, Italian, Portuguese and Dutch). The interface has an **EN/DE** switch; findings, reports and
+  exports follow the chosen language.
 
 ---
+
+> ⚠️ **The files in `samples/` contain real prompt injection payloads on purpose** (that is what they are for).
+> Do not hand them to an AI agent that can act on your behalf (send e-mails, run commands, approve things) –
+> scan them with this tool instead. The same applies to the attack phrases in `pif/patterns.py` and the tests.
 
 ## Installation (one command)
 
@@ -190,11 +195,13 @@ alt texts, titles and `data-*` tooltips, LaTeX tricks (`\textcolor{white}`, `\ph
 Base64, hex, `\x..`, `\u....`, URL encoding, HTML entities, binary, ROT13 and reversed text are decoded and checked against
 the rule base again.
 
-### Injection language (≈ 110 rules, 7 languages)
+### Injection language (≈ 110 rules)
 The rules cover instruction override, role hijacking and jailbreaks, system prompt extraction, fake chat markers
 (`<|im_start|>`, `[INST]`, `<<SYS>>`), direct address to an AI (“Note to AI”, “Hinweis an die KI”), concealment
 (“do not tell the user”), exfiltration, command execution and rating manipulation (e.g. “give a positive review” in CVs
-and papers) in English, German, French, Spanish, Italian, Portuguese and Dutch.
+and papers). All ten categories are covered in **English** (56 rules) and **German** (38 rules); for French, Spanish,
+Italian, Portuguese and Dutch only the core “ignore all previous instructions” pattern is included. Language-independent
+rules (chat markers, dangerous shell commands) apply to every text.
 
 The rules run on a **normalised view** of the text: homoglyphs folded, accents removed, invisible characters ignored,
 leetspeak (`1gn0r3`) and s p a c e d letters joined. An offset table maps every match back to the exact original position.
@@ -230,7 +237,7 @@ pip install -r requirements-dev.txt
 python -m pytest -q
 ```
 
-The suite (190+ tests) covers attacks in 7 languages, 11 obfuscation types, benign look-alikes, all smuggling techniques,
+The suite (190+ tests) covers attacks in English, German and 5 more languages, 11 obfuscation types, benign look-alikes, all smuggling techniques,
 10 PDF hiding variants including rotated pages and OCR scans, cleaning with different encodings, website crawling against a
 local test site, text/task extraction, English/German output, updates and the web API including token and DNS-rebinding
 protection. `tools/make_samples.py` creates the demo files in `samples/` (`attack_*` / `benign_*`, German and English).
@@ -243,7 +250,7 @@ node tests/ui_e2e.mjs http://127.0.0.1:8812/ "<path>/samples/attack_recipe.md,<p
 ```
 
 The rule base was tuned against benign corpora (≈ 4,500 files from npm docs, the Python standard library, pip/numpy and
-a 2,500-page HTML help site); fewer than 1 % of them are rated *suspicious*.
+a 2,500-page HTML help site): 4 of 4,522 files (0.1 %) are rated *suspicious*, none *dangerous*.
 
 ## Platform tests
 
