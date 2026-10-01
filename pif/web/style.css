@@ -239,3 +239,6 @@ body.drag::after {
 .crawl-log .u { word-break: break-all; }
 .crawl-log .n { grid-column: 2; color: var(--muted); font-size: 11.5px; }
 @media (max-width: 640px) { .url-opts { grid-template-columns: 1fr; } }
+
+.upd-log { white-space: pre-wrap; font-size: 12px; background: var(--code-bg); border: 1px solid var(--border);
+  border-radius: 8px; padding: 8px 10px; max-height: 200px; overflow: auto; }

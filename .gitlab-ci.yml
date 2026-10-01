@@ -1,7 +1,7 @@
 # Cross-platform checks: the tool is started exactly like a user would (run_linux_mac.sh),
 # then the full test suite runs inside the virtual environment that run_linux_mac.sh created.
 
-stages: [test]
+stages: [test, release]
 
 .linux_smoke: &linux_smoke
   stage: test
@@ -49,3 +49,28 @@ fedora:
   image: fedora:latest
   before_script:
     - dnf install -y -q python3 curl >/dev/null
+
+# The one-line installer, exactly as a user runs it (local source instead of git clone).
+install-script-debian:
+  stage: test
+  image: debian:12
+  before_script:
+    - apt-get update -qq && apt-get install -y -qq python3 python3-venv git >/dev/null
+  script:
+    - PIF_SOURCE="$CI_PROJECT_DIR" PIF_DIR="$HOME/pif" PIF_NO_SHORTCUTS=1 sh install.sh
+    - test -x "$HOME/.local/bin/pif"
+    - '"$HOME/.local/bin/pif" scan samples || test $? -eq 1'
+    - '"$HOME/.local/bin/pif" --version'
+
+# Every tag vX.Y.Z becomes a GitLab release (uses the job token, no secrets needed).
+release:
+  stage: release
+  image: registry.gitlab.com/gitlab-org/release-cli:latest
+  rules:
+    - if: '$CI_COMMIT_TAG =~ /^v[0-9]+[.][0-9]+([.][0-9]+)?$/'
+  script:
+    - echo "Erstelle Release $CI_COMMIT_TAG"
+  release:
+    tag_name: "$CI_COMMIT_TAG"
+    name: "PromptInjectionFinder $CI_COMMIT_TAG"
+    description: "Release $CI_COMMIT_TAG – Installation/Update: siehe README (install.sh / install.ps1, pif update)."

@@ -202,6 +202,12 @@ class Handler(BaseHTTPRequestHandler):
                 with STORE.lock:
                     items = [(fid, f["result"]) for fid, f in STORE.files.items()]
                 return self._json({"results": [_result_payload(fid, r) for fid, r in items]})
+            if url.path == "/api/update_check":
+                from .updater import UpdateError, check
+                try:
+                    return self._json(check())
+                except UpdateError as exc:
+                    return self._json({"error": str(exc), "current": __version__}, 200)
             if url.path == "/api/crawl":
                 job = JOBS.get((q.get("job") or [""])[0])
                 if not job:
@@ -305,6 +311,14 @@ class Handler(BaseHTTPRequestHandler):
                 JOBS[job.id] = job
                 job.start()
                 return self._json({"job": job.id})
+            if url.path == "/api/update":
+                from .updater import UpdateError, update
+                log = []
+                try:
+                    info = update(force=bool(payload.get("force")), log=log.append)
+                    return self._json({"ok": True, "updated": info.get("updated"), "log": log})
+                except UpdateError as exc:
+                    return self._json({"ok": False, "error": str(exc), "log": log})
             if url.path == "/api/crawl_cancel":
                 job = JOBS.get(payload.get("job", ""))
                 if job:

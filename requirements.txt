@@ -1,2 +1,2 @@
-pymupdf>=1.24
+pymupdf>=1.24.5
 numpy>=1.21

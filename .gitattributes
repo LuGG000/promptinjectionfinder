@@ -7,3 +7,4 @@ samples/** -text
 tests/fixtures/** -text
 *.pdf binary
 *.exe binary
+*.ps1 text eol=crlf

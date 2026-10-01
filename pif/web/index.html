@@ -25,6 +25,7 @@
     <button class="btn" id="btn-url">Webseite scannen</button>
     <button class="btn" id="btn-path">Pfad scannen</button>
     <button class="btn accent" id="btn-export" disabled>Bereinigen &amp; exportieren</button>
+    <button class="btn icon" id="btn-update" title="Nach Updates suchen" aria-label="Nach Updates suchen">⟳</button>
     <button class="btn icon" id="btn-theme" title="Hell/Dunkel umschalten" aria-label="Design umschalten">◐</button>
   </div>
 </header>
@@ -134,6 +135,20 @@
       <button class="btn" id="url-close" value="cancel">Schließen</button>
       <button class="btn" id="url-cancel" type="button" hidden>Abbrechen</button>
       <button class="btn primary" id="url-go" type="button">Scannen</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="dlg-update" class="dialog">
+  <form method="dialog">
+    <h2>Updates</h2>
+    <p class="muted">Installiert: Version <b id="upd-current"></b>. Die Prüfung fragt das GitLab-Projekt nach der neuesten
+      Release-Version (einzige Internetverbindung dieser Funktion).</p>
+    <div id="upd-status" class="note">Prüfe …</div>
+    <pre id="upd-log" class="upd-log" hidden></pre>
+    <div class="dlg-actions">
+      <button class="btn" value="cancel">Schließen</button>
+      <button class="btn accent" id="upd-go" type="button" hidden>Jetzt aktualisieren</button>
     </div>
   </form>
 </dialog>

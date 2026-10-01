@@ -240,13 +240,13 @@ def _analyze_page(page, pno, model: PdfDocModel, stats: dict, render_page=None, 
                         cover = [i for i, r in later if (r + (-1, -1, 1, 1)).contains(sb)]
                         if not cover and later:
                             # several shapes together may cover the text
-                            covered_area = sum((r & sb).get_area() for _, r in later)
-                            if covered_area >= 0.97 * sb.get_area():
+                            covered_area = sum(abs(r & sb) for _, r in later)
+                            if covered_area >= 0.97 * abs(sb):
                                 cover = [i for i, _ in later]
                         if cover:
                             # Ink found in the region may come from text painted *on top* of the cover.
                             first = min(cover)
-                            overdrawn = any(q > first and (qr & sb).get_area() > 0.2 * sb.get_area()
+                            overdrawn = any(q > first and abs(qr & sb) > 0.2 * abs(sb)
                                             for q, qr in text_boxes)
                             if pres < 0.003 or overdrawn:
                                 hard.append("von Grafik/Bild verdeckt")

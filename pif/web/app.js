@@ -545,6 +545,52 @@ async function cancelCrawl() {
   if (crawl.job) await api("/api/crawl_cancel", { body: { job: crawl.job } }).catch(() => {});
 }
 
+/* ------------------------------------------------------------------ updates */
+async function openUpdate() {
+  $("#upd-current").textContent = (state.info && state.info.version) || "?";
+  $("#upd-status").className = "note";
+  $("#upd-status").textContent = "Prüfe auf neue Version …";
+  $("#upd-log").hidden = true;
+  $("#upd-go").hidden = true;
+  $("#dlg-update").showModal();
+  try {
+    const r = await api("/api/update_check");
+    if (r.error) {
+      $("#upd-status").textContent = r.error;
+    } else if (r.update_available) {
+      $("#upd-status").className = "note ok";
+      $("#upd-status").innerHTML = `Neue Version <b>${esc(r.latest)}</b> verfügbar.` +
+        (r.notes ? `<br><span class="muted">${esc(r.notes).slice(0, 400)}</span>` : "");
+      $("#upd-go").hidden = r.method === "exe";
+      if (r.method === "exe") $("#upd-status").innerHTML += "<br>Die EXE-Version bitte neu herunterladen.";
+    } else {
+      $("#upd-status").className = "note ok";
+      $("#upd-status").textContent = `Du hast die neueste Version (${r.current}).`;
+    }
+  } catch (e) {
+    $("#upd-status").textContent = "Prüfung fehlgeschlagen: " + e.message;
+  }
+}
+
+async function runUpdate() {
+  $("#upd-go").disabled = true;
+  $("#upd-status").textContent = "Aktualisiere … (das kann eine Minute dauern)";
+  try {
+    const r = await api("/api/update", { body: {} });
+    $("#upd-log").hidden = false;
+    $("#upd-log").textContent = (r.log || []).join("\n");
+    $("#upd-status").className = r.ok ? "note ok" : "note";
+    $("#upd-status").textContent = r.ok
+      ? "Update installiert. Bitte das Programm schließen (Konsolenfenster) und neu starten."
+      : "Update fehlgeschlagen: " + r.error;
+    $("#upd-go").hidden = !!r.ok;
+  } catch (e) {
+    $("#upd-status").textContent = "Update fehlgeschlagen: " + e.message;
+  } finally {
+    $("#upd-go").disabled = false;
+  }
+}
+
 /* ------------------------------------------------------------------ events */
 function initTheme() {
   let t = null;
@@ -571,6 +617,8 @@ function initEvents() {
     if (p) scanPath(p);
   };
   $("#btn-export").onclick = openExport;
+  $("#btn-update").onclick = openUpdate;
+  $("#upd-go").onclick = runUpdate;
   $("#btn-url").onclick = openUrlDialog;
   $("#drop-url").onclick = openUrlDialog;
   $("#url-go").onclick = startCrawl;

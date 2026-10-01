@@ -134,6 +134,25 @@ def cmd_scan_url(args) -> int:
     return 1 if worst >= args.fail_at else 0
 
 
+def cmd_update(args) -> int:
+    from .updater import UpdateError, check, update
+
+    try:
+        if args.check:
+            info = check()
+            if info["update_available"]:
+                print(f"Neue Version verfügbar: {info['latest']} (installiert: {info['current']}).")
+                print("Aktualisieren mit:  python -m pif update")
+                return 10
+            print(f"Aktuell: Version {info['current']} ist die neueste.")
+            return 0
+        update(force=args.force)
+        return 0
+    except UpdateError as exc:
+        print(f"Update nicht möglich: {exc}", file=sys.stderr)
+        return 3
+
+
 def cmd_gui(args) -> int:
     from .server import run
 
@@ -177,6 +196,11 @@ def main(argv=None) -> int:
     u.add_argument("--fail-at", type=float, default=65.0)
     u.add_argument("-v", "--verbose", action="store_true")
     u.set_defaults(func=cmd_scan_url)
+
+    up = sub.add_parser("update", help="auf die neueste Release-Version aktualisieren")
+    up.add_argument("--check", action="store_true", help="nur prüfen, ob es eine neue Version gibt")
+    up.add_argument("--force", action="store_true", help="auch neu installieren, wenn schon aktuell")
+    up.set_defaults(func=cmd_update)
 
     g = sub.add_parser("gui", help="Weboberfläche starten (offline, localhost)")
     g.add_argument("paths", nargs="*", help="optional: Dateien/Ordner direkt beim Start scannen")

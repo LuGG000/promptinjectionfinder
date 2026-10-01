@@ -13,7 +13,56 @@ entfernt sie auf Wunsch.
 
 ---
 
-## Schnellstart
+## Installation (ein Befehl)
+
+**Windows** (PowerShell):
+
+```powershell
+irm https://gitlab.com/LuGG000/promptinjectionfinder/-/raw/main/install.ps1 | iex
+```
+
+**Linux und macOS** (Terminal):
+
+```bash
+curl -fsSL https://gitlab.com/LuGG000/promptinjectionfinder/-/raw/main/install.sh | sh
+```
+
+Der Installer:
+
+- holt das neueste Release,
+- legt eine eigene Python-Umgebung an,
+- installiert die zwei Abhängigkeiten,
+- richtet die Starter ein: unter Windows Desktop- und Startmenü-Verknüpfung, unter Linux/macOS die Befehle
+  `promptinjectionfinder` (Oberfläche) und `pif` (Kommandozeile), unter Linux zusätzlich einen Startmenü-Eintrag.
+
+Fehlt Python, installiert ihn der Windows-Installer per `winget`; unter Linux/macOS nennt er den passenden Paketbefehl.
+Ein **zweiter Aufruf aktualisiert** eine vorhandene Installation.
+
+Ohne Installer (z. B. nach `git clone` oder ZIP-Download): einfach die Startskripte in der Tabelle unten benutzen.
+
+> Die Einzeiler und das Update über die GitLab-API funktionieren ohne Anmeldung nur, wenn das GitLab-Projekt **öffentlich**
+> ist. Bei einem privaten Projekt: `git clone https://gitlab.com/LuGG000/promptinjectionfinder.git` mit eigenem Zugang und
+> dann `install.sh` / `install.ps1` im Ordner starten. Updates laufen dann über `git` mit denselben Zugangsdaten.
+> Alternativ einen Token in `PIF_GITLAB_TOKEN` setzen.
+
+## Update auf die neueste Version
+
+| Weg | Befehl |
+|---|---|
+| Oberfläche | Knopf **⟳** oben rechts → „Jetzt aktualisieren“ |
+| Windows | Startmenü „PromptInjectionFinder aktualisieren“ oder `update_windows.bat` |
+| Linux / macOS | `pif update` oder `./update_linux_mac.sh` |
+| Nur prüfen | `pif update --check` (Exit-Code 10 = neue Version verfügbar) |
+
+Releases sind Git-Tags `vX.Y.Z`; die CI legt daraus automatisch ein GitLab-Release an. Ein Update holt das neueste Release:
+
+- **Git-Installation:** per `git fetch` und Fast-Forward.
+- **Sonst:** per Archiv-Download. Ersetzt werden nur die Programmdateien; eine Sicherung landet in `.update-backup`.
+
+`.venv`, Exporte und eigene Dateien bleiben unberührt. Danach werden die Abhängigkeiten aktualisiert, und ein Neustart des
+Programms genügt.
+
+## Starten ohne Installer
 
 Die Bedienung läuft komplett per Klick im Browser. Ein Startskript legt beim ersten Start eine eigene Umgebung (`.venv`)
 an und installiert die zwei Abhängigkeiten. Danach läuft alles offline, und es wird nichts systemweit installiert.
