@@ -134,7 +134,8 @@ def _span_text(span) -> str:
     return "".join(chr(c[0]) if c[0] >= 0 else "�" for c in span["chars"])
 
 
-def _analyze_page(page, pno, model: PdfDocModel, stats: dict):
+def _analyze_page(page, pno, model: PdfDocModel, stats: dict, render_page=None, off_layers=frozenset()):
+    """``page`` provides the text (all layers switched on), ``render_page`` what a human sees."""
     rect = page.rect
     try:
         trace = page.get_texttrace()
@@ -142,7 +143,7 @@ def _analyze_page(page, pno, model: PdfDocModel, stats: dict):
         trace = []
     if not trace:
         return
-    raster = _PageRaster(page)
+    raster = _PageRaster(render_page or page)
     bboxlog = page.get_bboxlog()
     # Opaque things painted later in the content stream can cover earlier text.
     occluders = [(i, pymupdf.Rect(b)) for i, (kind, b) in enumerate(bboxlog)
@@ -178,6 +179,8 @@ def _analyze_page(page, pno, model: PdfDocModel, stats: dict):
         has_ink_chars = bool(text.strip())
         if has_ink_chars:
             ttype = span.get("type", 0)
+            if span.get("layer") and span["layer"] in off_layers:
+                hard.append(f"auf ausgeblendeter PDF-Ebene „{span['layer']}“")
             if ttype in (3, 7) and not is_ocr:
                 hard.append("unsichtbarer Rendermodus (Tr 3)")
             op = span.get("opacity")
@@ -298,6 +301,7 @@ _REASON_TITLES = [
     ("verdeckt", "Verdeckter Text (unter Bild/Grafik)"),
     ("abgeschnitten", "Unsichtbarer Text: abgeschnitten / nicht gerendert"),
     ("Transparenz", "Unsichtbarer Text: vollständig transparent"),
+    ("ausgeblendeter PDF-Ebene", "Unsichtbarer Text auf ausgeblendeter PDF-Ebene"),
 ]
 
 
@@ -513,13 +517,31 @@ def analyze_pdf(data: bytes):
         raise ValueError("PDF ist passwortgeschützt")
     model = PdfDocModel()
     page_sizes = []
+    # Text on switched-off layers (Optional Content) is skipped by PyMuPDF's extraction but
+    # read by many other PDF libraries: analyse a copy with every layer switched on.
+    off_layers = set()
+    work = doc
+    try:
+        off_layers = {v["name"] for v in doc.get_ocgs().values() if not v.get("on", True)}
+    except Exception:
+        pass
+    if off_layers:
+        tmp = pymupdf.open(stream=data, filetype="pdf")
+        if tmp.needs_pass:
+            tmp.authenticate("")
+        cat = tmp.pdf_catalog()
+        tmp.xref_set_key(cat, "OCProperties/D/OFF", "[]")
+        tmp.xref_set_key(cat, "OCProperties/D/BaseState", "/ON")
+        tmp.xref_set_key(cat, "OCProperties/D/AS", "null")
+        work = pymupdf.open(stream=tmp.tobytes(), filetype="pdf")
+        stats["hidden_layers"] = sorted(off_layers)
     for pno, page in enumerate(doc):
         r = page.rect
         page_sizes.append({"w": r.width, "h": r.height, "matrix": page.rotation_matrix})
         if pno > 0:
             model.add("\n", -1, None, [], [])
             model.add("\n", -1, None, [], [])
-        _analyze_page(page, pno, model, stats)
+        _analyze_page(work[pno], pno, model, stats, render_page=page, off_layers=frozenset(off_layers))
     text = model.text
     findings, covered = _hidden_findings(model, page_sizes)
 

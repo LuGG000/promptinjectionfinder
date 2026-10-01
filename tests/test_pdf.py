@@ -164,3 +164,19 @@ def test_encrypted_pdf_with_user_password_reports_error():
 def test_broken_pdf_reports_error():
     r = scan_bytes("broken.pdf", b"%PDF-1.7\nthis is not a pdf")
     assert r.error
+
+
+def test_text_on_hidden_layer():
+    doc = pymupdf.open()
+    p = doc.new_page()
+    p.insert_text((72, 72), VISIBLE, fontsize=12)
+    ocg = doc.add_ocg("versteckt", on=False)
+    p.insert_text((72, 120), INJ, fontsize=11, oc=ocg)
+    data = doc.tobytes()
+    r = scan_bytes("ocg.pdf", data)
+    hidden = _hidden(r)
+    assert hidden and "ausgeblendeter PDF-Ebene" in hidden[0].title
+    assert r.stats["hidden_layers"] == ["versteckt"]
+    cleaned = clean_document("ocg.pdf", data, r, None)
+    assert cleaned["rescan"].verdict == "clean"
+    assert VISIBLE in cleaned["text"]
