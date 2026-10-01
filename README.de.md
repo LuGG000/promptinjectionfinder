@@ -292,3 +292,15 @@ tests/                 pytest-Suite
 tools/                 Beispiel-Generator, EXE-Build
 samples/               Demo-Dateien (attack_* / benign_*, deutsch und englisch)
 ```
+
+## Lizenz
+
+Copyright (C) 2026 LuGG000
+
+PromptInjectionFinder ist freie Software unter der **GNU Affero General Public License v3.0 oder später**
+(AGPL-3.0-or-later), siehe [LICENSE](LICENSE). Die Software wird ohne jede Gewährleistung bereitgestellt.
+
+Warum AGPL: Die PDF-Analyse nutzt [PyMuPDF](https://github.com/pymupdf/PyMuPDF) (© Artifex, AGPL-3.0 oder kommerzielle
+Lizenz), das auch in der EXE enthalten ist. Weitere Komponenten: [NumPy](https://numpy.org) (BSD-3-Clause) und in der EXE die
+Python-Laufzeit (PSF-Lizenz). Wer veränderte Versionen weitergibt – auch als Netzwerkdienst –, muss den Quellcode unter
+derselben Lizenz zugänglich machen. (Rechtlich verbindlich ist der englische Lizenztext in `LICENSE`.)

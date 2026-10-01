@@ -30,7 +30,7 @@ GITLAB = os.environ.get("PIF_GITLAB_URL", "https://gitlab.com").rstrip("/")
 API = f"{GITLAB}/api/v4/projects/{urllib.parse.quote(PROJECT, safe='')}"
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # files/folders of the program that an archive update replaces
-PROGRAM_ITEMS = ("pif", "tools", "tests", "samples", "README.md", "README.de.md", "requirements.txt", "requirements-dev.txt",
+PROGRAM_ITEMS = ("pif", "tools", "tests", "samples", "README.md", "README.de.md", "LICENSE", "requirements.txt", "requirements-dev.txt",
                  "run_windows.bat", "run_linux_mac.sh", "run_mac.command", "update_windows.bat",
                  "update_linux_mac.sh", "install.sh", "install.ps1", ".gitlab-ci.yml", ".gitignore", ".gitattributes")
 
