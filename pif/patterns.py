@@ -13,6 +13,7 @@ import re
 from dataclasses import dataclass
 
 from .normalize import View, build_view, plain_view
+from .unicode_tools import is_invisible
 
 CATEGORY_TITLES = {
     "override": "Anweisungs-Überschreibung",
@@ -28,6 +29,7 @@ CATEGORY_TITLES = {
 }
 
 SEP = r"[^a-z0-9]*"
+SEP_STRICT = r"[^a-z0-9]+"
 
 # A negation right before a match ("do not ignore previous instructions",
 # "never share your password") turns the phrase into benign advice.
@@ -57,7 +59,7 @@ _RULES = [
      r"(the|these|this|all) (above|previous|prior|preceding|earlier) (instructions?|text|content|rules|prompts?|messages?) (is|are|was|were) (fake|false|wrong|outdated|obsolete|invalid|a test|void|irrelevant|not important|cancelled)"),
     ("en.override.priority", "override", 70,
      r"(priority|important|urgent|critical|mandatory|top secret) (override|instructions?|message|notice|update|command) (for|to) (the |any |all )?(ai|assistant|model|llm|bot|agent|system)"),
-    ("en.override.instead", "override", 30,
+    ("en.override.instead", "override", 15,
      r"(instead|rather) (you (must|should|will|shall)|do the following|follow these|your (new )?task is)"),
     ("en.override.real_task", "override", 55,
      r"(your|the) (real|actual|true|new|only) (task|job|goal|objective|instruction|purpose) (is|now is|will be)"),
@@ -97,8 +99,8 @@ _RULES = [
      r"from now on (you|your|act|respond|reply|answer|behave|speak|always|only|never|ignore|pretend)"),
     ("en.role.act_as_evil", "role", 72,
      r"(act|behave|respond|roleplay|role play|operate|function) (as|like) (if you (are|were) )?(a |an |the )?(different|new|unrestricted|unfiltered|evil|malicious|hacker|jailbroken|uncensored|dan|developer mode|admin|root|system administrator|ai without|rogue)"),
-    ("en.role.pretend", "role", 35,
-     r"(pretend|imagine|assume) (that )?(you are|you re|to be|you have no|you can)"),
+    ("en.role.pretend", "role", 25,
+     r"(pretend|imagine) (that )?(you are|you re|to be|you have no|you can)"),
     ("en.role.reprogrammed", "role", 75,
      r"(you have been|you ve been|you are being|you were) (reprogrammed|reset|updated|jailbroken|freed|unlocked|reconfigured|liberated|hacked|taken over)"),
     ("en.role.mode", "role", 80,
@@ -131,15 +133,15 @@ _RULES = [
      r"(system ?prompt|systemanweisungen|system ?anweisungen|systemnachricht|ursprunglichen anweisungen|anfangsanweisungen|initialen anweisungen|internen anweisungen|geheimen anweisungen)"),
 
     # ------------------------------------------------------------------ exfil / secrets
-    ("en.exfil.secrets", "exfil", 75,
-     r"(send|reveal|print|output|share|give|leak|include|post|email|upload|forward|transmit|disclose) (me |us |out )?(the |your |all |any |their |user s |users )?"
+    ("en.exfil.secrets", "exfil", 65,
+     r"(send|reveal|print|output|share|give|post|email|upload|forward|transmit|disclose|tell) (me |us )?(the |your |all |any |their |user s |users |my |all the |all your )"
      r"(api ?keys?|passwords?|passwds?|credentials|secrets?|access tokens?|auth tokens?|private keys?|session cookies?|cookies|env(ironment)? variables|ssh keys?|personal data|chat history|conversation history|previous messages|credit card)"),
     ("en.exfil.send_data_to", "exfil", 75,
      r"(send|post|upload|forward|transmit|submit|exfiltrate|leak|email|e mail|relay|report) (all |the |this |any |every |your |their |a copy of )?"
      r"(data|information|conversation|chat|messages?|content|text|documents?|files?|results?|summary|answers?|responses?|output|history|context|details|contents|emails?) "
      r"(to|at|via|using|into) (https?|www|ftp|the following|this (url|link|address|endpoint|server|webhook)|my (server|email|webhook)|[a-z0-9._%+-]+ ?@)"),
-    ("en.exfil.render_image", "exfil", 55,
-     r"(append|add|include|insert|embed|render|output|display) (the following |this |an |a )?(markdown )?(image|img|link|url|pixel|tracking pixel|iframe)( tag)? (with|containing|that includes|to|pointing)"),
+    ("en.exfil.render_image", "exfil", 45,
+     r"(append|add|include|insert|embed|render|output) (the following |this |an |a )?(markdown image|image|img|tracking pixel|pixel|iframe)( tag)? (with|containing|that includes|whose url|pointing to)"),
     ("en.exfil.visit_url", "exfil", 15,
      r"(visit|open|fetch|load|navigate to|browse to|access|request|curl|wget|go to|click) (the following |this )?(url|link|website|page|endpoint|address|webhook|https?)"),
     ("de.exfil.secrets", "exfil", 75,
@@ -191,7 +193,7 @@ _RULES = [
     ("en.conceal.dont_tell_user", "conceal", 70,
      r"(do not|dont|don t|never) (tell|inform|mention|reveal|alert|notify|warn|let|show) (this )?(to )?(the |any |your )?(user|users|human|humans|person|reader|operator|customer|recipient|anyone|admin|administrator)"),
     ("en.conceal.user_must_not_know", "conceal", 70,
-     r"(the )?(user|human|reader|customer|recipient|operator) (must|should|will|can|may) (not|never) (know|see|find out|notice|be told|be informed|learn|suspect|be aware)"),
+     r"(the )?(user|human|reader|customer|recipient|operator) (must|should) (not|never) (know|see|find out|notice|be told|be informed|learn|suspect|be aware)"),
     ("en.conceal.silently", "conceal", 62,
      r"(silently|secretly|covertly|quietly|discreetly|invisibly|stealthily|without (notice|asking|confirmation)) (send|execute|run|perform|do|add|include|insert|append|call|forward|exfiltrate|change|modify|delete|transfer|approve|follow)"),
     ("en.conceal.hidden_instruction", "conceal", 75,
@@ -215,14 +217,14 @@ _RULES = [
     ("en.tool.execute", "tool", 20,
      r"(execute|run|perform|invoke|call|trigger) (the )?(following |this |these )?(shell |bash |terminal |system |python |powershell |sql |cmd )?(command|code|script|function|tool|api call|payload|commands)"),
     ("x.tool.dangerous_cmd", "tool", 70,
-     r"rm\s+-rf\s+[/~*.]|del\s+/[fsq]|format\s+c:|(curl|wget)\s+[^\n|]*\|\s*(ba|z)?sh|powershell(\.exe)?\s+-(e|enc|encodedcommand)\b|invoke-expression|\biex\s*\(|drop\s+table|;\s*shutdown\b|nc\s+-e\s|/bin/sh\s+-i|base64\s+-d\s*\|", True),
-    ("en.tool.destroy", "tool", 25,
+     r"rm\s+-rf\s+(/|~|\*|\$home)(\s|$)|del\s+/[fsq]\s+[a-z]:\\|format\s+c:|(curl|wget)\s+(-\S+\s+)*['\"]?https?://\S+['\"]?\s*\|\s*(sudo\s+)?(ba|z)?sh\b|powershell(\.exe)?\s+-(e|enc|encodedcommand)\b|invoke-expression|\biex\s*\(|drop\s+table|;\s*shutdown\b|nc\s+-e\s|/bin/sh\s+-i|base64\s+-d\s*\|", True),
+    ("en.tool.destroy", "tool", 15,
      r"(delete|remove|wipe|erase|destroy|purge) (all )?(the |your |my |every )?(files|data|database|records|repository|repo|emails|messages|backups|documents|accounts?)"),
     ("en.tool.approve", "tool", 55,
      r"(approve|merge|grant|authorize|accept|confirm) (this |the )?(pull request|pr|merge request|access|permission|transaction|payment|request|transfer|invoice) (immediately|automatically|without|now)"),
     ("de.tool.execute", "tool", 20,
      r"(fuhre|fuhren sie|starte|rufe) (den |das |die |folgenden |folgende |diesen |dieses )?(befehl|code|skript|script|funktion|kommando|programm|tool)(e|s)? (aus|auf)"),
-    ("de.tool.destroy", "tool", 25,
+    ("de.tool.destroy", "tool", 15,
      r"(losche|loschen sie|entferne|vernichte) (alle |samtliche |die |deine )?(dateien|daten|datenbank|e ?mails|nachrichten|backups|dokumente|konten)"),
     ("de.tool.approve", "tool", 55,
      r"(genehmige|bestatige|akzeptiere|autorisiere|uberweise) (diese |die |den )?(zahlung|uberweisung|transaktion|anfrage|rechnung|zugriff|pull request|merge request) (sofort|automatisch|ohne)"),
@@ -245,7 +247,7 @@ _RULES = [
      r"(give|write|provide|output|produce|generate|return) (a |an |only |the )?(very )?(positive|favorable|favourable|glowing|excellent|good|great|strong|perfect) (review|rating|assessment|evaluation|feedback|score|recommendation|summary|grade|reference)s?"),
     ("en.manip.rate_candidate", "manipulation", 75,
      r"(rate|score|rank|evaluate|grade|assess|review|judge|consider) (this|the|my|our) (candidate|applicant|paper|submission|resume|cv|document|product|application|proposal|essay|answer|student|work|code|manuscript|company|vendor) "
-     r"(as |with |at |to be )?(highly|positively|the best|excellent|very good|a perfect|perfect|top|10|5|an a|outstanding|exceptional|favorabl|strong|the strongest|the most qualified|qualified)"),
+     r"(as |with |at |to be )?(highly|positively|the best|excellent|very good|a perfect|perfect|top|10|5|an a|outstanding|exceptional|favorabl[a-z]*|strong|the strongest|the most qualified|qualified)"),
     ("en.manip.is_best", "manipulation", 62,
      r"(this|the) (candidate|applicant|paper|submission|resume|cv|product|proposal|person|student|manuscript|vendor|company) (is|should be|must be|will be) (the best|an? excellent|perfect|highly qualified|extremely qualified|exceptionally|outstanding|the most qualified|the ideal|hired|accepted|selected|approved|recommended|ranked first|shortlisted)"),
     ("en.manip.recommend", "manipulation", 55,
@@ -284,19 +286,39 @@ class Rule:
     id: str
     category: str
     weight: int
-    regex: re.Pattern
+    strict: re.Pattern
+    loose: re.Pattern
     raw: bool
 
 
-def _compile(pattern: str, raw: bool) -> re.Pattern:
+def _compile(pattern: str, raw: bool) -> tuple:
     if raw:
-        return re.compile(pattern, re.IGNORECASE)
-    # A literal space separates words: allow any non-alnum run (or nothing).
-    body = pattern.replace(" ", SEP)
-    return re.compile(r"(?<![a-z0-9])" + body)
+        rx = re.compile(pattern, re.IGNORECASE)
+        return rx, rx
+    # " ?" = optional separator; " " = at least one separator (strict) or any (loose).
+    marker = "\u0001"
+    base = pattern.replace(" ?", marker)
+    strict = base.replace(" ", SEP_STRICT).replace(marker, SEP)
+    loose = base.replace(" ", SEP).replace(marker, SEP)
+    lead, tail = r"(?<![a-z0-9])", r"(?![a-z])"
+    return re.compile(lead + "(?:" + strict + ")" + tail), re.compile(lead + "(?:" + loose + ")")
 
 
-RULES = [Rule(r[0], r[1], r[2], _compile(r[3], len(r) > 4 and r[4]), len(r) > 4 and r[4]) for r in _RULES]
+def _mk(r):
+    raw = len(r) > 4 and r[4]
+    strict, loose = _compile(r[3], raw)
+    return Rule(r[0], r[1], r[2], strict, loose, raw)
+
+
+RULES = [_mk(r) for r in _RULES]
+STRONG_RULES = [r for r in RULES if r.weight >= 55 and not r.raw]
+
+# Cheap pre-check for transformed texts (ROT13 / reversed): skip the rule run
+# unless one of these stems is present.
+_TRIGGER = re.compile(
+    r"ignor|disregard|forget|instruct|prompt|anweisung|vergiss|missacht|jailbreak|system|reveal|"
+    r"pretend|bypass|override|do anything|you are now|du bist jetzt|hinweis an|note to|ki |ai |llm|"
+    r"positive review|bewerte|password|passwort|api key|exfil|send all|sende alle")
 
 
 @dataclass
@@ -307,29 +329,83 @@ class Hit:
     matched: str
 
 
-def find_hits(text: str, rules=None) -> list:
+def _obfuscated(segment: str) -> bool:
+    """True if a span looks like deliberately split words (s p a c e d, i.g.n.o.r.e, zero-width)."""
+    tokens = re.findall(r"[^\W_]+", segment)
+    if not tokens:
+        return False
+    if any(is_invisible(ord(c)) for c in segment):
+        return True
+    return sum(len(t) for t in tokens) / len(tokens) <= 2.5
+
+
+def _windows(regions, n, pad=160):
+    out = []
+    for s, e in sorted(regions):
+        s, e = max(0, s - pad), min(n, e + pad)
+        if out and s <= out[-1][1]:
+            out[-1][1] = max(out[-1][1], e)
+        else:
+            out.append([s, e])
+    return out
+
+
+def find_hits(text: str, rules=None, leet: bool = True) -> list:
     """Run all rules on the normalized views of ``text``; return de-duplicated hits."""
     rules = rules or RULES
-    views = [build_view(text), build_view(text, leet=True)]
-    raw = plain_view(text)
+    norm = build_view(text)
+    jobs = [(norm, None)]  # (view, windows or None for the full text)
+    if leet:
+        lv = build_view(text, leet=True)
+        if lv.changed:
+            jobs.append((lv, _windows([(k, k + 1) for k in lv.changed], len(lv.text))))
+    raw = None
     hits = []
     seen = set()
+
+    def accept(rule, view, ms, me, need_obfuscation):
+        if ms >= me - 1:
+            return
+        if not rule.raw and _NEGATED.search(view.text, max(0, ms - 16), ms):
+            return
+        s, e = view.span(ms, me)
+        if need_obfuscation and not _obfuscated(text[s:e]):
+            return
+        key = (rule.id, s // 8)
+        if key in seen:
+            return
+        seen.add(key)
+        hits.append(Hit(rule, s, e, text[s:e]))
+
     for rule in rules:
-        targets = [raw] if rule.raw else views
-        for view in targets:
-            for m in rule.regex.finditer(view.text):
-                if m.end() - m.start() < 2:
-                    continue
-                if not rule.raw and _NEGATED.search(view.text, max(0, m.start() - 16), m.start()):
-                    continue
-                s, e = view.span(m.start(), m.end())
-                key = (rule.id, s // 8)
-                if key in seen:
-                    continue
-                seen.add(key)
-                hits.append(Hit(rule, s, e, text[s:e]))
+        if rule.raw:
+            if raw is None:
+                raw = plain_view(text)
+            for m in rule.strict.finditer(raw.text):
+                accept(rule, raw, m.start(), m.end(), False)
+            continue
+        for view, wins in jobs:
+            if wins is None:
+                for m in rule.strict.finditer(view.text):
+                    accept(rule, view, m.start(), m.end(), False)
+            else:
+                for a, b in wins:
+                    for m in rule.strict.finditer(view.text, a, b):
+                        accept(rule, view, m.start(), m.end(), False)
+            if view.loose_regions:
+                for a, b in _windows(view.loose_regions, len(view.text)):
+                    for m in rule.loose.finditer(view.text, a, b):
+                        accept(rule, view, m.start(), m.end(), True)
     hits.sort(key=lambda h: h.start)
     return hits
+
+
+def transformed_hits(text: str, transform) -> list:
+    """Strong-rule hits on a transformed (ROT13 / reversed) text, without leet view."""
+    t = transform(text)
+    if t == text or not _TRIGGER.search(t.lower()):
+        return []
+    return find_hits(t, rules=STRONG_RULES, leet=False)
 
 
 def combine(weights) -> float:

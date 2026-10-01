@@ -20,7 +20,7 @@ import unicodedata
 import urllib.parse
 
 from .models import Finding, Location
-from .patterns import CATEGORY_TITLES, combine, find_hits, payload_score
+from .patterns import CATEGORY_TITLES, combine, find_hits, payload_score, transformed_hits
 from . import unicode_tools as U
 
 CATEGORY_DESCRIPTIONS = {
@@ -197,6 +197,8 @@ def _complex_script(ch: str) -> bool:
 
 
 def unicode_findings(text: str) -> list:
+    if text.isascii():  # fast path: none of the Unicode tricks can be present
+        return _control_findings(text) + _terminal_findings(text)
     findings = []
 
     # --- Tag characters (ASCII smuggling) ---------------------------------
@@ -270,11 +272,15 @@ def unicode_findings(text: str) -> list:
             continue
         prev = text[i - 1] if i > 0 else ""
         nxt = text[i + 1] if i + 1 < n else ""
+        j = i + 1
+        while j < n and zw_pred(ord(text[j])):
+            j += 1
+        nxt_vis = text[j] if j < n else ""
         if cp == 0xFEFF and i == 0:
             continue
         if cp == 0x200D and prev and nxt and (U.is_emoji_like(ord(_prev_visible(text, i) or " ")) or 0x1F3FB <= ord(prev) <= 0x1F3FF) and U.is_emoji_like(ord(nxt)):
             continue  # emoji ZWJ sequence
-        if cp in (0x200C, 0x200D) and (_complex_script(prev) or _complex_script(nxt)):
+        if cp in (0x200C, 0x200D) and (_complex_script(_prev_visible(text, i)) or _complex_script(nxt_vis)):
             continue  # required joiner in Arabic/Indic/Persian scripts
         if cp == 0x00AD:
             soft.append(i)
@@ -374,6 +380,29 @@ def unicode_findings(text: str) -> list:
                 tags=["hidden"],
             ))
 
+    # --- Private use area -------------------------------------------------
+    pua = [i for i, ch in enumerate(text) if U.is_private_use(ord(ch))]
+    if pua:
+        findings.append(Finding(
+            category="unicode",
+            rule="unicode.private_use",
+            title="Zeichen aus dem Private-Use-Bereich",
+            description=f"{len(pua)} Zeichen ohne standardisierte Bedeutung – können versteckte Daten tragen.",
+            score=15.0 if len(pua) < 50 else 20.0,
+            evidence=context(text, pua[0], pua[0] + 1),
+            location=Location(start=pua[0], end=pua[-1] + 1, line=line_of(text, pua[0]),
+                              ranges=[[i, i + 1, ""] for i in pua]),
+        ))
+
+    findings.extend(_homoglyph_findings(text))
+    findings.extend(_styled_letter_findings(text))
+    findings.extend(_control_findings(text))
+    findings.extend(_terminal_findings(text))
+    return findings
+
+
+def _control_findings(text: str) -> list:
+    findings = []
     # --- Control characters ---------------------------------------------
     ctrl = [i for i, ch in enumerate(text) if U.is_control(ord(ch)) and ch not in "\x1b\x0c\x0b"]
     if ctrl:
@@ -387,24 +416,6 @@ def unicode_findings(text: str) -> list:
             location=Location(start=ctrl[0], end=ctrl[-1] + 1, line=line_of(text, ctrl[0]),
                               ranges=[[i, i + 1, ""] for i in ctrl]),
         ))
-
-    # --- Private use area -------------------------------------------------
-    pua = [i for i, ch in enumerate(text) if U.is_private_use(ord(ch))]
-    if pua:
-        findings.append(Finding(
-            category="unicode",
-            rule="unicode.private_use",
-            title="Zeichen aus dem Private-Use-Bereich",
-            description=f"{len(pua)} Zeichen ohne standardisierte Bedeutung – können versteckte Daten tragen.",
-            score=20.0,
-            evidence=context(text, pua[0], pua[0] + 1),
-            location=Location(start=pua[0], end=pua[-1] + 1, line=line_of(text, pua[0]),
-                              ranges=[[i, i + 1, ""] for i in pua]),
-        ))
-
-    findings.extend(_homoglyph_findings(text))
-    findings.extend(_styled_letter_findings(text))
-    findings.extend(_terminal_findings(text))
     return findings
 
 
@@ -426,10 +437,11 @@ def _homoglyph_findings(text: str) -> list:
     words = []
     for m in _WORD.finditer(text):
         w = m.group()
+        if not all(("a" <= c.lower() <= "z") or ord(c) in U.CONFUSABLES for c in w):
+            continue  # contains letters that are not look-alikes (normal foreign text)
         scripts = {U.script_of(c) for c in w}
         mixed = "LATIN" in scripts and scripts & set(U.LATIN_LIKE_SCRIPTS_FOR_MIXING)
-        whole_fake = (mostly_latin and scripts and scripts <= set(U.LATIN_LIKE_SCRIPTS_FOR_MIXING)
-                      and all(ord(c) in U.CONFUSABLES for c in w))
+        whole_fake = (mostly_latin and len(w) >= 3 and scripts and scripts <= set(U.LATIN_LIKE_SCRIPTS_FOR_MIXING))
         if not (mixed or whole_fake):
             continue
         words.append(w)
@@ -463,7 +475,8 @@ def _is_styled(cp: int) -> bool:
         return True
     ch = chr(cp)
     if 0x1D400 <= cp <= 0x1D7FF or 0xFF01 <= cp <= 0xFF5E or 0x2460 <= cp <= 0x24FF or 0x1F100 <= cp <= 0x1F1FF:
-        return unicodedata.normalize("NFKC", ch) != ch or U.emoji_letter(cp) is not None
+        n = unicodedata.normalize("NFKC", ch)
+        return n != ch and n.isalnum()
     return False
 
 
@@ -594,7 +607,7 @@ def _encoded_finding(text, s, e, decoded, kind, label):
         score = min(100.0, max(55.0, ps + 15))
         title = f"{label}-kodierte Anweisung"
     elif words >= 4:
-        score = 22.0
+        score = 12.0
         title = f"{label}-kodierter Klartext"
     else:
         return None
@@ -683,11 +696,8 @@ def encoded_findings(text: str) -> list:
         ("ROT13", "rot13", lambda t: codecs.encode(t, "rot13"), lambda s, e, n: (s, e)),
         ("Rückwärts geschrieben", "reversed", lambda t: t[::-1], lambda s, e, n: (n - e, n - s)),
     ):
-        tt = transform(text)
-        if tt == text:
-            continue
-        plain = {(h.rule.id, h.start, h.end) for h in find_hits(text)}
-        strong = [h for h in find_hits(tt) if h.rule.weight >= 55]
+        strong = transformed_hits(text, transform)
+        plain = {(h.rule.id, h.start, h.end) for h in find_hits(text)} if strong else set()
         for h in strong:
             s, e = mapper(h.start, h.end, len(text))
             if (h.rule.id, s, e) in plain or transform(text[s:e]) == text[s:e]:
@@ -716,7 +726,11 @@ def layout_findings(text: str) -> list:
     findings = []
     for m in re.finditer(r"[ \t]{60,}(\S[^\n]*)", text):
         hidden = m.group(1)
-        if len(hidden.strip()) < 3:
+        line_start = text.rfind("\n", 0, m.start()) + 1
+        line = text[line_start:m.end()]
+        if hidden.lstrip().startswith(("|", "+", "#", "//", "*")) or line.count("|") >= 2:
+            continue  # table padding / aligned code comments
+        if sum(c.isalpha() for c in hidden) < 8:
             continue
         ps, hits = payload_score(hidden)
         findings.append(Finding(

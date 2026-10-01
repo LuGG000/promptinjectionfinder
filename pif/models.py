@@ -94,14 +94,20 @@ class ScanResult:
     def risk_score(self) -> float:
         """Combine finding scores: probabilistic OR over the scores so that many
         medium signals add up, but a single critical one dominates."""
-        relevant = [f.score for f in self.findings if f.score >= 20]
-        if not relevant:
-            return max((f.score for f in self.findings), default=0.0)
+        best = {}
+        for f in self.findings:
+            best[f.rule] = max(best.get(f.rule, 0.0), f.score)
+        scores = sorted(best.values(), reverse=True)
+        if not scores:
+            return 0.0
+        top = scores[0]
+        # Each further distinct kind of signal adds a damped share of the remaining headroom;
+        # repetitions of the same rule do not add up.
         rest = 1.0
-        for s in relevant:
-            rest *= 1.0 - s / 100.0 * 0.9
-        combined = (1.0 - rest) * 100.0
-        return round(max(combined, max(relevant)), 1)
+        for s in scores[1:]:
+            if s >= 20:
+                rest *= 1.0 - 0.35 * s / 100.0
+        return round(top + (100.0 - top) * (1.0 - rest) * (top / 100.0), 1)
 
     @property
     def verdict(self) -> str:

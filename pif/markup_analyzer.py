@@ -68,8 +68,31 @@ def _attrs(raw: str) -> dict:
     return out
 
 
-def _css_rules(text: str) -> dict:
-    rules = {}
+def _compound(sel: str):
+    """Parse 'div.a.b#x' into (tag, classes, ids); None for unsupported parts."""
+    if re.search(r":{1,2}(before|after|hover|focus|active|visited|placeholder|selection)", sel):
+        return None  # pseudo elements/states do not describe the static text
+    sel = re.sub(r":{1,2}[\w-]+(\([^)]*\))?", "", sel)
+    if not sel or "[" in sel or "*" in sel:
+        return None
+    tag = None
+    classes, ids = set(), set()
+    for prefix, name in re.findall(r"([.#]?)([\w-]+)", sel):
+        if prefix == ".":
+            classes.add(name)
+        elif prefix == "#":
+            ids.add(name)
+        else:
+            tag = name
+    return (tag, frozenset(classes), frozenset(ids))
+
+
+def _css_rules(text: str) -> list:
+    """Return [(specificity, order, compounds, props)] for simple selectors.
+
+    ``compounds`` lists the descendant chain, the last one being the element."""
+    rules = []
+    order = 0
     for block in re.finditer(r"<style\b[^>]*>(.*?)</style\s*>", text, re.S | re.I):
         css = re.sub(r"/\*.*?\*/", "", block.group(1), flags=re.S)
         for m in CSS_RULE_RE.finditer(css):
@@ -78,25 +101,37 @@ def _css_rules(text: str) -> dict:
                 sel = sel.strip().lower()
                 if not sel or sel.startswith("@"):
                     continue
-                last = re.split(r"[\s>+~]+", sel)[-1]
-                last = re.sub(r":{1,2}[\w-]+(\([^)]*\))?", "", last)
-                if not last:
+                chain = [_compound(p) for p in re.split(r"\s*[>+~]\s*|\s+", sel) if p]
+                if not chain or any(c is None for c in chain):
                     continue
-                parts = re.findall(r"([.#]?)([\w-]+)", last)
-                for prefix, name in parts:
-                    key = ("class" if prefix == "." else "id" if prefix == "#" else "tag", name)
-                    rules.setdefault(key, {}).update(props)
+                spec = sum(len(c[2]) * 100 + len(c[1]) * 10 + (1 if c[0] else 0) for c in chain)
+                order += 1
+                rules.append((spec, order, chain, props))
+    rules.sort(key=lambda r: (r[0], r[1]))
     return rules
 
 
-def _element_props(tag: str, attrs: dict, css: dict) -> dict:
+def _matches(compound, info) -> bool:
+    tag, classes, ids = compound
+    return ((tag is None or tag == info["tag"]) and classes <= info["classes"] and ids <= info["ids"])
+
+
+def _element_props(tag: str, attrs: dict, css: list, ancestors=()) -> dict:
     props = {}
-    props.update(css.get(("tag", tag), {}))
-    classes = attrs.get("class", "").lower().split()
-    for c in classes:
-        props.update(css.get(("class", c), {}))
-    if attrs.get("id"):
-        props.update(css.get(("id", attrs["id"].lower()), {}))
+    me = {"tag": tag, "classes": frozenset(attrs.get("class", "").lower().split()),
+          "ids": frozenset([attrs["id"].lower()] if attrs.get("id") else [])}
+    for _spec, _order, chain, rprops in css:
+        if not _matches(chain[-1], me):
+            continue
+        # descendant semantics: earlier compounds must match ancestors in order
+        k = len(chain) - 2
+        for anc in reversed(ancestors):
+            if k < 0:
+                break
+            if _matches(chain[k], anc):
+                k -= 1
+        if k < 0:
+            props.update(rprops)
     if tag == "font" and attrs.get("color"):
         props["color"] = attrs["color"].lower()
     if attrs.get("bgcolor"):
@@ -167,7 +202,7 @@ def analyze_html_structure(text: str) -> list:
                     close(el, m.start(), m.start())
             continue
         attrs = _attrs(rawattrs)
-        props = _element_props(tag, attrs, css)
+        props = _element_props(tag, attrs, css, [e["info"] for e in stack])
         parent_bg = stack[-1]["bg"] if stack else None
         bg = background_of(props) or parent_bg
         hard, soft = hiding_reasons(props, bg or (255, 255, 255))
@@ -191,8 +226,10 @@ def analyze_html_structure(text: str) -> list:
             end = endm.end() if endm else n
             pos = end
             continue
+        info = {"tag": tag, "classes": frozenset(attrs.get("class", "").lower().split()),
+                "ids": frozenset([attrs["id"].lower()] if attrs.get("id") else [])}
         stack.append({"tag": tag, "start": m.start(), "open_end": m.end(), "hidden": hard, "soft": soft,
-                      "bg": bg, "ancestor_hidden": ancestor_hidden})
+                      "bg": bg, "ancestor_hidden": ancestor_hidden, "info": info})
     while stack:
         el = stack.pop()
         close(el, n, n)
@@ -273,7 +310,7 @@ def analyze_markdown(text: str) -> list:
     # Link targets
     for m in re.finditer(r"(?<!!)\[([^\]]*)\]\(\s*<?([^)\s>]+)>?(?:\s+[\"'(]([^\"')]*)[\"')])?\s*\)", text):
         url, title = m.group(2), m.group(3) or ""
-        if re.match(r"\s*(javascript|vbscript|data:text/html)", url, re.I):
+        if re.match(r"\s*(javascript:|vbscript:|data:text/html)", url, re.I):
             findings.append(Finding(
                 category="active", rule="md.script_link", title="Skript-Link in Markdown",
                 description="Der Link führt Code aus (javascript:/data:).", score=45.0,
@@ -325,7 +362,7 @@ def analyze_comments(text: str) -> list:
     for m in re.finditer(r"<!--(.*?)(?:-->|\Z)", text, re.S):
         inner = m.group(1).strip()
         f = _hidden_finding(text, m.start(), m.end(), inner, "markup.comment", "Versteckter HTML-Kommentar",
-                            "HTML-Kommentare werden nicht angezeigt, aber von KI-Modellen mitgelesen.", base=22.0)
+                            "HTML-Kommentare werden nicht angezeigt, aber von KI-Modellen mitgelesen.", base=15.0)
         if f:
             findings.append(f)
     return findings
@@ -344,13 +381,30 @@ def active_content(text: str) -> list:
     return findings
 
 
+def mask_markdown_code(text: str) -> str:
+    """Blank out fenced/indented code blocks and inline code spans (offsets preserved).
+
+    HTML inside code is displayed literally by Markdown renderers, so it is not
+    hidden content."""
+    def blank(m):
+        return "".join(c if c in "\r\n" else " " for c in m.group(0))
+    text = re.sub(r"(?ms)^[ \t]{0,3}(`{3,}|~{3,})[^\n]*\n.*?(?:^[ \t]{0,3}\1[ \t]*$|\Z)", blank, text)
+    text = re.sub(r"(`+)(?!`)(.+?)(?<!`)\1(?!`)", blank, text, flags=re.S)
+    return text
+
+
 def analyze_markup(text: str, is_html: bool) -> list:
     findings = []
-    findings += analyze_comments(text)
-    findings += analyze_html_structure(text)
-    findings += analyze_attributes(text)
-    findings += analyze_latex(text)
-    findings += active_content(text)
+    src = text if is_html else mask_markdown_code(text)
+    findings += analyze_comments(src)
+    findings += analyze_html_structure(src)
+    findings += analyze_attributes(src)
+    findings += analyze_latex(src)
+    findings += active_content(src)
     if not is_html:
-        findings += analyze_markdown(text)
+        findings += analyze_markdown(src)
+    # evidence must show the real text, not the masked one
+    for f in findings:
+        if f.location.start is not None and src is not text:
+            f.evidence = visible_repr(text[f.location.start:f.location.end][:500])
     return findings
