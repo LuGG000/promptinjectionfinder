@@ -97,6 +97,8 @@ def build_view(text: str, leet: bool = False) -> View:
                     prev_space = True
                 dropped_inside = False
                 continue
+            if ch == "_" and out_chars and out_chars[-1].isalpha():
+                loose.append((len(out_chars) - 1, len(out_chars) + 2))
             if 0x1F100 <= ord(ch) <= 0x1F1FF:
                 # enclosed / regional-indicator letters are written without spaces
                 loose.append((len(out_chars), len(out_chars) + 1))

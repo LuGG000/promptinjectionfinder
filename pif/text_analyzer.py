@@ -285,6 +285,8 @@ def unicode_findings(text: str) -> list:
         if cp == 0x00AD:
             soft.append(i)
             continue
+        if cp == 0x2800 and (0x2800 <= ord(prev or " ") <= 0x28FF or 0x2800 <= ord(nxt or " ") <= 0x28FF):
+            continue  # blank cell inside braille graphics
         suspicious.append(i)
 
     if suspicious:
@@ -437,8 +439,11 @@ def _homoglyph_findings(text: str) -> list:
     words = []
     for m in _WORD.finditer(text):
         w = m.group()
-        if not all(("a" <= c.lower() <= "z") or ord(c) in U.CONFUSABLES for c in w):
-            continue  # contains letters that are not look-alikes (normal foreign text)
+        if len(w) < 4 or not all(("a" <= c.lower() <= "z") or ord(c) in U.CONFUSABLES for c in w):
+            continue  # short tokens (units like kΩ) or real foreign words
+        skeleton = "".join(U.CONFUSABLES.get(ord(c), c.lower()) for c in w)
+        if not re.search(r"[aeiouy]", skeleton) or len(set(skeleton)) < 3:
+            continue  # not word-like (e.g. spinner frames "ρββββββ")
         scripts = {U.script_of(c) for c in w}
         mixed = "LATIN" in scripts and scripts & set(U.LATIN_LIKE_SCRIPTS_FOR_MIXING)
         whole_fake = (mostly_latin and len(w) >= 3 and scripts and scripts <= set(U.LATIN_LIKE_SCRIPTS_FOR_MIXING))
@@ -728,6 +733,8 @@ def layout_findings(text: str) -> list:
         hidden = m.group(1)
         line_start = text.rfind("\n", 0, m.start()) + 1
         line = text[line_start:m.end()]
+        if not text[line_start:m.start()].strip() and len(m.group(0)) - len(hidden) < 120:
+            continue  # deep indentation (code continuation lines) is not hiding anything
         if hidden.lstrip().startswith(("|", "+", "#", "//", "*")) or line.count("|") >= 2:
             continue  # table padding / aligned code comments
         if sum(c.isalpha() for c in hidden) < 8:

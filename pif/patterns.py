@@ -29,7 +29,7 @@ CATEGORY_TITLES = {
 }
 
 SEP = r"[^a-z0-9]*"
-SEP_STRICT = r"[^a-z0-9]+"
+SEP_STRICT = r"[^a-z0-9_]+"  # "_" joins identifiers (new_task), not words
 
 # A negation right before a match ("do not ignore previous instructions",
 # "never share your password") turns the phrase into benign advice.
@@ -55,7 +55,7 @@ _RULES = [
     ("en.override.dont_follow", "override", 82,
      r"(do not|dont|don t|never|stop) (follow|following|obey|obeying|comply with|listen to|adhere to) (the |your |any |those |these )?(previous |prior |original |system |above |earlier |other |initial )?(instructions?|rules|guidelines|prompts?|directives)"),
     ("en.override.new_instructions", "override", 55,
-     r"(new|updated|revised|real|actual|true|override|additional|important|secret|hidden|priority) (system )?(instructions?|directives?|rules|task|orders|prompt|commands?) ?(follow|below|are|is)?:"),
+     r"(new|updated|revised|override|secret|hidden|priority) (system )?(instructions?|directives?|rules|task|orders|prompt|commands?)( follow| below| are| is)? ?:"),
     ("en.override.instructions_changed", "override", 75,
      r"(your|the) (instructions?|task|rules|goal|objective|purpose|mission|directives?) (has|have|is|are) (been )?(now )?(changed|updated|replaced|overridden|overwritten|cancelled|canceled|revoked|modified)"),
     ("en.override.above_is_fake", "override", 72,
@@ -238,7 +238,7 @@ _RULES = [
     ("en.jb.no_restrictions", "jailbreak", 20,
      r"(without|no|ignore|bypass|disable|remove|turn off|free from|override|ignoring|lift|circumvent) (any |all |your |the )?(ethical |moral |safety |content |usage |openai |anthropic )?(restrictions|limitations|filters?|guidelines|guardrails|censorship|safeguards|safety measures|safety policies|content policy|boundaries|alignment)"),
     ("en.jb.evil_mode", "jailbreak", 55, r"(developer|god|evil|unrestricted|unfiltered|uncensored|unlocked|unaligned) (mode|version|persona|ai|assistant|model)"),
-    ("en.jb.anything", "jailbreak", 42, r"(you|ai) (can|will|must|are able to|are allowed to) (do|say|answer) anything"),
+    ("en.jb.anything", "jailbreak", 18, r"(you|ai) (can|will|must|are able to|are allowed to) (do|say|answer) anything"),
     ("en.jb.character", "jailbreak", 35, r"(stay|remain) in character|never break character"),
     ("de.jb.no_restrictions", "jailbreak", 20,
      r"(ohne|keine|umgehe|ignoriere|deaktiviere|entferne|hebe) (jegliche |alle |deine |samtliche )?(ethischen |moralischen |sicherheits)?(einschrankungen|beschrankungen|filter|richtlinien|grenzen|zensur|schutzmassnahmen|sicherheitsvorkehrungen)"),
@@ -336,6 +336,8 @@ def _obfuscated(segment: str) -> bool:
     """True if a span looks like deliberately split words (s p a c e d, i.g.n.o.r.e, zero-width)."""
     if any(is_invisible(ord(c)) or 0x1F100 <= ord(c) <= 0x1F1FF for c in segment):
         return True
+    if " " not in segment and len(re.findall(r"[_.\-]", segment)) >= 3:
+        return True  # words_glued_with_separators
     tokens = re.findall(r"[^\W_]+", segment)
     if not tokens:
         return False

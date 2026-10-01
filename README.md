@@ -1,93 +1,161 @@
 # PromptInjectionFinder
 
+**Deterministischer, vollständig offline arbeitender Scanner für versteckte Prompt Injections in PDF-, Markdown-, Text- und HTML-Dateien – mit Bereinigung und Export.**
 
+Wer Text aus Webseiten, PDFs oder Dokumenten an ein KI-Modell weitergibt, gibt oft mehr weiter, als er sieht:
+weißer Text auf weißem Grund, winzige oder verdeckte Schrift, unsichtbare Unicode-Zeichen, in Emojis versteckte Bytes,
+HTML-Kommentare oder kodierte Befehle. PromptInjectionFinder macht genau diese Inhalte sichtbar, bewertet sie und
+entfernt sie auf Wunsch.
 
-## Getting started
+- **Deterministisch:** keine KI, keine Heuristik mit Zufall. Gleiche Eingabe ergibt immer das gleiche Ergebnis, und jeder Fund ist mit Regel-ID begründet.
+- **Offline:** Der Server läuft nur auf `127.0.0.1`, und es werden keine externen Ressourcen geladen.
+- **Nachvollziehbar:** Jeder Fund zeigt Fundstelle, Begründung, dekodierten versteckten Inhalt und die Position im Dokument.
 
-To make it easy for you to get started with GitLab, here's a list of recommended next steps.
+---
 
-Already a pro? Just edit this README.md and make it your own. Want to make it easy? [Use the template at the bottom](#editing-this-readme)!
+## Schnellstart
 
-## Add your files
+Voraussetzung ist Python ≥ 3.9. Die Abhängigkeiten werden einmalig installiert, danach läuft alles offline.
 
-* [Create](https://docs.gitlab.com/user/project/repository/web_editor/#create-a-file) or [upload](https://docs.gitlab.com/user/project/repository/web_editor/#upload-a-file) files
-* [Add files using the command line](https://docs.gitlab.com/topics/git/add_files/#add-files-to-a-git-repository) or push an existing Git repository with the following command:
-
+```bash
+pip install -r requirements.txt
+python -m pif            # startet die Weboberfläche und öffnet den Browser
 ```
-cd existing_repo
-git remote add origin https://gitlab.com/LuGG000/promptinjectionfinder.git
-git branch -M main
-git push -uf origin main
+
+Unter Windows genügt ein Doppelklick auf **`start.bat`**, unter Linux/macOS `./start.sh`.
+
+### Weboberfläche
+
+1. Dateien oder ganze Ordner per Drag & Drop ablegen, über **Dateien wählen** / **Ordner hochladen** auswählen
+   oder per **Pfad scannen** einen lokalen Ordner angeben.
+2. Links erscheint jede Datei mit Bewertung (*Gefährlich*, *Verdächtig*, *Unauffällig*).
+3. **Funde:** Jeder Fund hat eine Checkbox. Empfohlene Funde sind vorausgewählt.
+   **Dokument:** Bei Text, Markdown und HTML wird die Fundstelle farbig markiert und unsichtbare Zeichen erscheinen als Chips.
+   Bei PDFs wird die gerenderte Seite angezeigt, und rote Rahmen zeigen den unsichtbaren Text.
+   **Bereinigte Vorschau:** zeigt das Ergebnis der Bereinigung samt neuer Risikobewertung.
+4. **Bereinigt herunterladen** liefert eine einzelne Datei. **Bereinigen & exportieren** schreibt alle Dateien bereinigt in einen
+   Ordner, zusammen mit `report.html` und `report.json`. Die Originale bleiben unverändert.
+
+### Kommandozeile
+
+```bash
+python -m pif scan samples/ -v                 # Bericht in der Konsole
+python -m pif scan datei.pdf --json            # maschinenlesbar
+python -m pif clean ordner/ --out export/      # bereinigen + exportieren
+python -m pif gui samples/ --port 8765         # Oberfläche mit vorgeladenen Dateien
 ```
 
-## Integrate with your tools
+`scan` beendet sich mit Exit-Code 1, sobald eine Datei das Risiko 65 erreicht (`--fail-at`). Damit eignet sich der Befehl für CI-Pipelines.
 
-* [Set up project integrations](https://gitlab.com/LuGG000/promptinjectionfinder/-/settings/integrations)
+---
 
-## Collaborate with your team
+## Was erkannt wird
 
-* [Invite team members and collaborators](https://docs.gitlab.com/user/project/members/)
-* [Create a new merge request](https://docs.gitlab.com/user/project/merge_requests/creating_merge_requests/)
-* [Automatically close issues from merge requests](https://docs.gitlab.com/user/project/issues/managing_issues/#closing-issues-automatically)
-* [Enable merge request approvals](https://docs.gitlab.com/user/project/merge_requests/approvals/)
-* [Set auto-merge](https://docs.gitlab.com/user/project/merge_requests/auto_merge/)
+### PDF (Analyse des *gerenderten* Dokuments)
+| Technik | Wie sie erkannt wird |
+|---|---|
+| Weiße/hellgraue Schrift auf weißem Grund | Die Seite wird gerendert, und die Textfarbe wird gegen die tatsächlich gerenderte Hintergrundfarbe gemessen (WCAG-Kontrast). So werden auch farbige Kästen berücksichtigt, z. B. blau auf blau. |
+| Winzige oder gestauchte Schrift | Schriftgröße, Glyphenhöhe und Zeichenbreite |
+| Unsichtbarer Rendermodus (Tr 3), Transparenz | Texttrace-Rendermodus und Opazität |
+| Text außerhalb der Seite | Text-Bounding-Box gegen den sichtbaren Seitenbereich (CropBox) |
+| Text unter Bildern oder Flächen | Zeichenreihenfolge (Z-Order) plus deckende Flächen und Bilder, auch wenn darüber anderer Text steht |
+| Abgeschnittener Text | Die Glyphenfarbe kommt im Rendering nicht vor |
+| Annotationen, Formularfelder, Links, Metadaten/XMP, JavaScript, Launch-Aktionen, eingebettete Dateien | Objekt- und Inhaltsanalyse |
+| OCR-Textebenen (Scans) | werden erkannt und *nicht* als versteckt gewertet; Injection-Text darin wird trotzdem gemeldet |
 
-## Test and Deploy
+### Markdown / HTML
+CSS-versteckte Elemente werden erkannt: `display:none`, `visibility:hidden`, `opacity`, `font-size:0`, weiße oder
+hintergrundgleiche Schrift, `left:-9999px`, `clip`, `transform:scale(0)`, `height:0`, das `hidden`-Attribut, `<template>` sowie
+Klassen-Regeln aus `<style>` mit echtem Selektor-Matching. Dazu kommen HTML-Kommentare, `[//]: # (…)`-Kommentare,
+Front-Matter, Alt-Texte und Titel, LaTeX-Tricks (`\textcolor{white}`, `\phantom`), Exfiltrations-Bild-URLs
+(`![](https://x/?q={chat})`) und `javascript:`-Links. Code-Blöcke werden korrekt als sichtbar behandelt.
 
-Use the built-in continuous integration in GitLab.
+### Unicode- und Emoji-Smuggling (alle Formate)
+- **Unicode-Tag-Zeichen** (ASCII-Smuggling, U+E0000–E007F). Sie werden dekodiert, legitime Flaggen wie 🏴󠁧󠁢󠁥󠁮󠁧󠁿 bleiben erlaubt.
+- **Variation-Selector-Smuggling** („Text in Emojis“): Bytes, die an ein Emoji angehängt sind, werden dekodiert.
+- **Zero-Width-Steganografie** (binär kodierte Nachrichten) und Zero-Width-Zeichen, die Wörter zerteilen.
+  Legitime Fälle wie Emoji-ZWJ-Sequenzen oder persische ZWNJ werden ignoriert.
+- **Bidi-Overrides** (Trojan Source), Steuerzeichen, ANSI-Escape-Codes (inklusive `ESC[8m` Conceal) und Wagenrücklauf-Überschreibung.
+- **Homoglyphen** (kyrillisch/griechisch in lateinischen Wörtern). Beim Bereinigen werden sie durch die echten Buchstaben ersetzt.
+- **Stilisierte Buchstaben:** 𝐟𝐞𝐭𝐭, Ｖｏｌｌｂｒｅｉｔｅ, 🅴🅼🅾🅹🅸-Buchstaben, Regional-Indicator-Text, Zalgo.
 
-* [Get started with GitLab CI/CD](https://docs.gitlab.com/ci/quick_start/)
-* [Analyze your code for known vulnerabilities with Static Application Security Testing (SAST)](https://docs.gitlab.com/user/application_security/sast/)
-* [Deploy to Kubernetes, Amazon EC2, or Amazon ECS using Auto Deploy](https://docs.gitlab.com/topics/autodevops/requirements/)
-* [Use pull-based deployments for improved Kubernetes management](https://docs.gitlab.com/user/clusters/agent/)
-* [Set up protected environments](https://docs.gitlab.com/ci/environments/protected_environments/)
+### Kodierte Payloads
+Base64, Hex, `\x..`, `\u....`, URL-Encoding, HTML-Entities, Binär, ROT13 und rückwärts geschriebener Text werden dekodiert
+und erneut gegen die Regelbasis geprüft.
 
-***
+### Injection-Sprache (≈ 110 Regeln, 7 Sprachen)
+Die Regeln decken Anweisungs-Überschreibung, Rollenübernahme und Jailbreaks, Systemprompt-Ausspähung, gefälschte Chat-Marker
+(`<|im_start|>`, `[INST]`, `<<SYS>>`), direkte KI-Ansprache („Hinweis an die KI“), Verschleierung („sag dem Nutzer nichts“),
+Exfiltration, Befehlsausführung und Bewertungsmanipulation ab (z. B. „give a positive review“ in Lebensläufen und Papern).
+Unterstützt werden Deutsch, Englisch, Französisch, Spanisch, Italienisch, Portugiesisch und Niederländisch.
 
-# Editing this README
+Die Regeln laufen auf einer **normalisierten Sicht** des Textes. Dabei werden Homoglyphen gefaltet, Akzente entfernt,
+unsichtbare Zeichen ignoriert, Leetspeak (`1gn0r3`) und g e s p e r r t e Buchstaben zusammengeführt. Über eine Offset-Tabelle
+zeigt jeder Treffer exakt auf die Originalstelle. Gegen Fehlalarme helfen strikte Wortgrenzen, wobei Matches ohne Leerzeichen
+nur in nachweislich verschleierten Bereichen zugelassen werden, außerdem ein Negations-Filter („never share your password“)
+und Clusterbildung: Erst mehrere schwache Signale zusammen ergeben einen starken Fund.
 
-When you're ready to make this README your own, just edit this file and use the handy template below (or feel free to structure it however you want - this is just a starting point!). Thanks to [makeareadme.com](https://www.makeareadme.com/) for this template.
+### Bewertung
+Jeder Fund hat einen Score von 0–100 (*Info* < 20 ≤ *Niedrig* < 40 ≤ *Mittel* < 65 ≤ *Hoch* < 85 ≤ *Kritisch*).
+Versteckter Inhalt, der zusätzlich Injection-Sprache enthält, wird hochgestuft. Das Dateirisiko ergibt sich aus dem stärksten
+Fund plus einem gedämpften Anteil weiterer *unterschiedlicher* Signale. Wiederholungen derselben Regel addieren sich nicht.
 
-## Suggestions for a good README
+---
 
-Every project is different, so consider which of these sections apply to yours. The sections used in the template are suggestions for most open source projects. Also keep in mind that while a README can be too long and detailed, too long is better than too short. If you think your README is too long, consider utilizing another form of documentation rather than cutting out information.
+## Bereinigung
 
-## Name
-Choose a self-explaining name for your project.
+| Dateityp | Vorgehen |
+|---|---|
+| Text, Markdown, HTML | Ausgewählte Bereiche werden zeichengenau entfernt (ganze Sätze oder Elemente). Homoglyphen und stilisierte Buchstaben werden ersetzt statt gelöscht. Die Kodierung (UTF-8/BOM, UTF-16, cp1252) und Zeilenenden bleiben erhalten. |
+| PDF | Versteckter Text wird per Redaction *ohne sichtbare Box* aus dem Inhaltsstrom entfernt. Annotationen, Links, Metadaten, JavaScript- und Launch-Aktionen sowie eingebettete Dateien werden entfernt. Zusätzlich wird eine `.bereinigt.txt` mit dem sauberen Textinhalt exportiert. |
 
-## Description
-Let people know what your project can do specifically. Provide context and add a link to any reference visitors might be unfamiliar with. A list of Features or a Background subsection can also be added here. If there are alternatives to your project, this is a good place to list differentiating factors.
+Nach jeder Bereinigung wird die Datei erneut gescannt, und der Bericht zeigt das Risiko vorher und nachher.
 
-## Badges
-On some READMEs, you may see small images that convey metadata, such as whether or not all the tests are passing for the project. You can use Shields to add some to your README. Many services also have instructions for adding a badge.
+> Hinweis zu PDFs: Liegt versteckter Text exakt *unter* sichtbarem Text, entfernt die Redaction an dieser Stelle beides.
+> In der Vorschau ist das sofort zu sehen.
 
-## Visuals
-Depending on what you are making, it can be a good idea to include screenshots or even a video (you'll frequently see GIFs rather than actual videos). Tools like ttygif can help, but check out Asciinema for a more sophisticated method.
+---
 
-## Installation
-Within a particular ecosystem, there may be a common way of installing things, such as using Yarn, NuGet, or Homebrew. However, consider the possibility that whoever is reading your README is a novice and would like more guidance. Listing specific steps helps remove ambiguity and gets people to using your project as quickly as possible. If it only runs in a specific context like a particular programming language version or operating system or has dependencies that have to be installed manually, also add a Requirements subsection.
+## Tests
 
-## Usage
-Use examples liberally, and show the expected output if you can. It's helpful to have inline the smallest example of usage that you can demonstrate, while providing links to more sophisticated examples if they are too long to reasonably include in the README.
+```bash
+pip install -r requirements-dev.txt
+python -m pytest -q
+```
 
-## Support
-Tell people where they can go to for help. It can be any combination of an issue tracker, a chat room, an email address, etc.
+Die Suite umfasst über 150 Tests: Angriffe in 7 Sprachen, 11 Verschleierungsarten, harmlose Gegenbeispiele,
+alle Smuggling-Techniken, 10 PDF-Versteckvarianten inklusive gedrehter Seiten und OCR-Scans, Bereinigung mit
+verschiedenen Kodierungen, Export und die Web-API inklusive Token- und DNS-Rebinding-Schutz.
+`tools/make_samples.py` erzeugt die Demo-Dateien in `samples/`.
 
-## Roadmap
-If you have ideas for releases in the future, it is a good idea to list them in the README.
+## Eigenständige EXE (optional)
 
-## Contributing
-State if you are open to contributions and what your requirements are for accepting them.
+```bat
+tools\build_exe.bat
+```
 
-For people who want to make changes to your project, it's helpful to have some documentation on how to get started. Perhaps there is a script that they should run or some environment variables that they need to set. Make these steps explicit. These instructions could also be useful to your future self.
+Erzeugt mit PyInstaller `dist\PromptInjectionFinder.exe`, die ohne Python-Installation läuft.
 
-You can also document commands to lint the code or run tests. These steps help to ensure high code quality and reduce the likelihood that the changes inadvertently break something. Having instructions for running tests is especially helpful if it requires external setup, such as starting a Selenium server for testing in a browser.
+## Sicherheit der Oberfläche
+Der lokale Server bindet ausschließlich an `127.0.0.1`. Jede API-Anfrage braucht ein zufälliges Sitzungs-Token, und der Host-Header
+wird geprüft (Schutz gegen DNS-Rebinding). Eine strikte Content-Security-Policy verhindert, dass andere Webseiten im Browser die lokale
+API steuern können.
 
-## Authors and acknowledgment
-Show your appreciation to those who have contributed to the project.
-
-## License
-For open source projects, say how it is licensed.
-
-## Project status
-If you have run out of energy or time for your project, put a note at the top of the README saying that development has slowed down or stopped completely. Someone may choose to fork your project or volunteer to step in as a maintainer or owner, allowing your project to keep going. You can also make an explicit request for maintainers.
+## Projektstruktur
+```
+pif/
+  patterns.py          Regelbasis + Matching-Engine
+  normalize.py         normalisierte Textsichten mit Offset-Mapping
+  unicode_tools.py     Zeichenklassen, Smuggling-Decoder, Homoglyphen
+  text_analyzer.py     formatunabhängige Analyse
+  markup_analyzer.py   Markdown/HTML-Versteckanalyse
+  css.py               Farben, Kontrast, CSS-Versteckregeln
+  pdf_analyzer.py      PDF-Sichtbarkeitsanalyse
+  scanner.py           Dateityp-Erkennung, Zusammenführung
+  cleaner.py           Bereinigung + Export
+  report.py            HTML-Bericht
+  server.py, web/      Offline-Weboberfläche
+tests/                 pytest-Suite
+tools/                 Beispiel-Generator, EXE-Build
+samples/               Demo-Dateien (angriff_* / harmlos_*)
+```
