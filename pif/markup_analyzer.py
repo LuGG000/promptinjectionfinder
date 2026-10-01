@@ -9,7 +9,7 @@ from __future__ import annotations
 import html
 import re
 
-from .css import background_of, hiding_reasons, parse_color, parse_style
+from .css import UNKNOWN_BG, background_of, hiding_reasons, parse_color, parse_style, resolve_vars
 from .models import Finding, Location
 from .patterns import payload_score
 from .text_analyzer import _payload_note, context, line_of, visible_repr
@@ -87,20 +87,76 @@ def _compound(sel: str):
     return (tag, frozenset(classes), frozenset(ids))
 
 
-def _css_rules(text: str) -> list:
-    """Return [(specificity, order, compounds, props)] for simple selectors.
+def _media_applies(query: str) -> bool:
+    """Assume a desktop screen: skip print and small-screen media blocks."""
+    q = query.lower()
+    if re.search(r"\bprint\b|\bspeech\b", q) and "screen" not in q:
+        return False
+    if re.search(r"max-(device-)?width|orientation\s*:\s*portrait|hover\s*:\s*none|pointer\s*:\s*coarse", q):
+        return False
+    return True
 
-    ``compounds`` lists the descendant chain, the last one being the element."""
+
+def _css_blocks(css: str):
+    """Yield (selector_text, body) for every style rule that applies on screen.
+
+    Handles nested at-rules (@media, @supports, @layer, @container) and skips
+    @keyframes, @font-face, @page and print/mobile-only media blocks."""
+    i, n = 0, len(css)
+    while i < n:
+        brace = css.find("{", i)
+        if brace < 0:
+            return
+        close_ = css.find("}", i)
+        if 0 <= close_ < brace:  # stray closing brace
+            i = close_ + 1
+            continue
+        prelude = css[i:brace].strip()
+        # find the matching closing brace
+        depth, j = 1, brace + 1
+        while j < n and depth:
+            if css[j] == "{":
+                depth += 1
+            elif css[j] == "}":
+                depth -= 1
+            j += 1
+        body = css[brace + 1:j - 1]
+        if prelude.startswith("@"):
+            name = prelude[1:].split(None, 1)[0].lower() if len(prelude) > 1 else ""
+            if name == "media":
+                if _media_applies(prelude[6:]):
+                    yield from _css_blocks(body)
+            elif name in ("supports", "layer", "container", "document", "scope"):
+                yield from _css_blocks(body)
+        elif prelude:
+            yield prelude, body
+        i = j
+
+
+_SHOWS = re.compile(r"display\s*:\s*(?!none)[a-z-]+|visibility\s*:\s*visible|opacity\s*:\s*(1|0?\.[5-9])|max-height\s*:\s*(?!0)")
+
+
+def _css_rules(text: str, extra_css: str = "") -> tuple:
+    """Return ([(specificity, order, compounds, props)], toggle_classes).
+
+    ``compounds`` lists the descendant chain, the last one being the element.
+    ``toggle_classes`` are classes that are hidden by default but have a rule
+    that shows them in some state (.page.active, .tab:target, .open .panel …):
+    tabs, accordions and sub-pages that a user reaches by clicking."""
+    sheets = [extra_css or ""]
+    sheets += [b.group(1) for b in re.finditer(r"<style\b[^>]*>(.*?)</style\s*>", text, re.S | re.I)]
     rules = []
+    raw_rules = []
     order = 0
-    for block in re.finditer(r"<style\b[^>]*>(.*?)</style\s*>", text, re.S | re.I):
-        css = re.sub(r"/\*.*?\*/", "", block.group(1), flags=re.S)
-        for m in CSS_RULE_RE.finditer(css):
-            props = parse_style(m.group(2))
-            for sel in m.group(1).split(","):
+    for css in sheets:
+        css = re.sub(r"/\*.*?\*/", "", css, flags=re.S)
+        for selector_text, body in _css_blocks(css):
+            props = parse_style(body)
+            for sel in selector_text.split(","):
                 sel = sel.strip().lower()
-                if not sel or sel.startswith("@"):
+                if not sel:
                     continue
+                raw_rules.append((sel, body.lower()))
                 chain = [_compound(p) for p in re.split(r"\s*[>+~]\s*|\s+", sel) if p]
                 if not chain or any(c is None for c in chain):
                     continue
@@ -108,7 +164,22 @@ def _css_rules(text: str) -> list:
                 order += 1
                 rules.append((spec, order, chain, props))
     rules.sort(key=lambda r: (r[0], r[1]))
-    return rules
+    variables = {}
+    for _sel, body in raw_rules:  # custom properties live in :root, html, body, …
+        for k, v in parse_style(body).items():
+            if k.startswith("--"):
+                variables[k] = v
+    rules = [(sp, o, ch, resolve_vars(pr, variables)) for sp, o, ch, pr in rules]
+    _css_rules.variables = variables
+    toggles = set()
+    for sel, body in raw_rules:
+        if not _SHOWS.search(body):
+            continue
+        for cls in re.findall(r"\.([\w-]+)", sel):
+            if re.fullmatch(r"(?:[a-z0-9]*)\." + re.escape(cls), sel):
+                continue  # the plain rule itself is not a state
+            toggles.add(cls)
+    return rules, toggles
 
 
 def _matches(compound, info) -> bool:
@@ -137,7 +208,8 @@ def _element_props(tag: str, attrs: dict, css: list, ancestors=()) -> dict:
     if attrs.get("bgcolor"):
         props["background-color"] = attrs["bgcolor"].lower()
     props.update(parse_style(attrs.get("style", "")))
-    return props
+    variables = getattr(_css_rules, "variables", {})
+    return resolve_vars(props, variables) if variables else props
 
 
 def _hidden_by_attrs(tag: str, attrs: dict) -> tuple:
@@ -155,9 +227,10 @@ def _hidden_by_attrs(tag: str, attrs: dict) -> tuple:
     return hard, soft
 
 
-def analyze_html_structure(text: str, hidden_base: float = 35.0) -> list:
+def analyze_html_structure(text: str, hidden_base: float = 35.0, extra_css: str = "") -> list:
     findings = []
-    css = _css_rules(text)
+    css, toggles = _css_rules(text, extra_css)
+    scripts = " ".join(m.group(1) for m in re.finditer(r"<script\b[^>]*>(.*?)</script\s*>", text, re.S | re.I))
     stack = []  # dicts: tag, start, open_end, hidden, soft, bg, reported
     pos = 0
     n = len(text)
@@ -165,6 +238,24 @@ def analyze_html_structure(text: str, hidden_base: float = 35.0) -> list:
     def close(el, end_inner, end_outer):
         if (el["hidden"] or el["soft"]) and not el["ancestor_hidden"]:
             inner = strip_tags(text[el["open_end"]:end_inner])
+            if el["hidden"] and el.get("toggle"):
+                ps, hits = payload_score(inner)
+                if not inner.strip():
+                    return
+                findings.append(Finding(
+                    category="hidden" if hits else "info",
+                    rule="html.toggle_content",
+                    title=f"Umschaltbarer Inhalt <{el['tag']}> (Reiter/Unterseite/Aufklappbereich)",
+                    description=("Dieser Bereich ist erst nach einem Klick sichtbar (" + el["toggle"] +
+                                 "). Er gehört zur normalen Seite und wird nicht als versteckt gewertet." + _payload_note(hits)),
+                    score=max(45.0, ps) if hits else 5.0,
+                    evidence=visible_repr(text[el["start"]:end_outer][:400]),
+                    decoded=inner[:3000],
+                    location=Location(start=el["start"], end=end_outer, line=line_of(text, el["start"])),
+                    default_remove=bool(hits),
+                    tags=["toggle"] + (["injection"] if hits else []),
+                ))
+                return
             if el["hidden"]:
                 f = _hidden_finding(text, el["start"], end_outer, inner, "html.hidden_element",
                                     f"Versteckter HTML-Inhalt <{el['tag']}>",
@@ -205,11 +296,20 @@ def analyze_html_structure(text: str, hidden_base: float = 35.0) -> list:
         props = _element_props(tag, attrs, css, [e["info"] for e in stack])
         parent_bg = stack[-1]["bg"] if stack else None
         bg = background_of(props) or parent_bg
-        hard, soft = hiding_reasons(props, bg or (255, 255, 255))
+        hard, soft = hiding_reasons(props, bg if bg is not None else (255, 255, 255))
         h2, s2 = _hidden_by_attrs(tag, attrs)
         hard += h2
         soft += s2
-        ancestor_hidden = any(e["hidden"] or e["soft"] for e in stack)
+        # toggled tabs/sub-pages are normal content: hidden things *inside* them must still be found
+        ancestor_hidden = any((e["hidden"] and not e.get("toggle")) or e["soft"] for e in stack)
+        toggle = ""
+        if hard and all(h.startswith(("display:none", "visibility", "hidden-Attribut", "CSS-Klasse")) for h in hard):
+            classes = set(attrs.get("class", "").lower().split())
+            if classes & toggles:
+                toggle = "CSS-Zustand ." + "/.".join(sorted(classes & toggles))
+            elif scripts and ((attrs.get("id") and attrs["id"] in scripts) or
+                              any(len(c) > 3 and c in scripts for c in classes)):
+                toggle = "per Skript umgeschaltet"
         # Text colour is inherited: an inherited invisible colour is reported on the ancestor.
         if tag == "input" and attrs.get("type", "").lower() == "hidden" and attrs.get("value"):
             ps, hits = payload_score(attrs["value"])
@@ -229,11 +329,17 @@ def analyze_html_structure(text: str, hidden_base: float = 35.0) -> list:
         info = {"tag": tag, "classes": frozenset(attrs.get("class", "").lower().split()),
                 "ids": frozenset([attrs["id"].lower()] if attrs.get("id") else [])}
         stack.append({"tag": tag, "start": m.start(), "open_end": m.end(), "hidden": hard, "soft": soft,
-                      "bg": bg, "ancestor_hidden": ancestor_hidden, "info": info})
+                      "bg": bg, "ancestor_hidden": ancestor_hidden, "info": info, "toggle": toggle})
     while stack:
         el = stack.pop()
         close(el, n, n)
     return findings
+
+
+_STRUCTURAL_ATTRS = {"class", "id", "style", "href", "src", "srcset", "type", "rel", "name", "lang", "dir", "role",
+                     "width", "height", "viewbox", "d", "points", "transform", "fill", "stroke", "xmlns", "charset",
+                     "http-equiv", "sizes", "media", "integrity", "crossorigin", "action", "method", "target",
+                     "for", "tabindex", "colspan", "rowspan", "align", "valign", "border", "cellpadding", "cellspacing"}
 
 
 def analyze_attributes(text: str) -> list:
@@ -243,9 +349,8 @@ def analyze_attributes(text: str) -> list:
         if m.group(0).startswith("<!--") or m.group(1):
             continue
         attrs = _attrs(m.group(3))
-        for key in ("alt", "title", "aria-label", "content", "data-prompt", "data-instructions", "placeholder", "summary"):
-            val = attrs.get(key)
-            if not val:
+        for key, val in attrs.items():
+            if not val or key in _STRUCTURAL_ATTRS or key.startswith("on") or len(val.split()) < 3:
                 continue
             ps, hits = payload_score(val)
             if hits:
@@ -393,11 +498,11 @@ def mask_markdown_code(text: str) -> str:
     return text
 
 
-def analyze_markup(text: str, is_html: bool) -> list:
+def analyze_markup(text: str, is_html: bool, extra_css: str = "") -> list:
     findings = []
     src = text if is_html else mask_markdown_code(text)
     findings += analyze_comments(src)
-    findings += analyze_html_structure(src, hidden_base=18.0 if is_html else 35.0)
+    findings += analyze_html_structure(src, hidden_base=18.0 if is_html else 35.0, extra_css=extra_css)
     findings += analyze_attributes(src)
     findings += analyze_latex(src)
     findings += active_content(src, is_html)

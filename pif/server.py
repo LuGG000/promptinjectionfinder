@@ -36,8 +36,8 @@ class Store:
         self.lock = threading.Lock()
         self.files = {}  # id -> {"name", "path", "data", "result"}
 
-    def add(self, name, data, path=""):
-        res = scan_bytes(name, data, path=path or name)
+    def add(self, name, data, path="", extra_css=""):
+        res = scan_bytes(name, data, path=path or name, extra_css=extra_css)
         fid = uuid.uuid4().hex[:12]
         with self.lock:
             self.files[fid] = {"name": name, "path": path or name, "data": data, "result": res}
@@ -49,6 +49,64 @@ class Store:
 
 
 STORE = Store()
+
+
+class CrawlJob:
+    """Background crawl + scan with progress reporting for the UI."""
+
+    def __init__(self, opts: dict):
+        self.id = uuid.uuid4().hex[:12]
+        self.opts = opts
+        self.status = "running"
+        self.phase = "Lade Seiten"
+        self.done = 0
+        self.total = int(opts.get("max_pages") or 30)
+        self.current = ""
+        self.results = []
+        self.log = []
+        self.error = ""
+        self.cancelled = False
+
+    def start(self):
+        threading.Thread(target=self._run, daemon=True).start()
+
+    def _progress(self, done, total, url):
+        self.done, self.total, self.current = done, total, url
+
+    def _run(self):
+        from .crawler import Crawler
+        try:
+            o = self.opts
+            crawler = Crawler(o.get("url", ""), max_depth=int(o.get("depth", 1)), max_pages=int(o.get("max_pages", 30)),
+                              same_host=bool(o.get("same_host", True)), respect_robots=bool(o.get("robots", True)),
+                              include_documents=bool(o.get("documents", True)),
+                              discover_mentions=bool(o.get("discover", False)),
+                              progress=self._progress, cancel=lambda: self.cancelled)
+            res = crawler.run()
+            self.log = [{"url": e.url, "status": e.status, "note": e.note} for e in res.log]
+            self.phase = "Analysiere"
+            self.total = len(res.pages)
+            for i, page in enumerate(res.pages):
+                if self.cancelled:
+                    break
+                self.done, self.current = i, page.url
+                fid, r = STORE.add(page.name, page.data, path=page.url, extra_css=page.css)
+                self.results.append(_result_payload(fid, r))
+            self.done = len(res.pages)
+            self.status = "cancelled" if self.cancelled else "done"
+        except Exception as exc:
+            self.error = f"{type(exc).__name__}: {exc}"
+            self.status = "error"
+
+    def snapshot(self) -> dict:
+        d = {"status": self.status, "phase": self.phase, "done": self.done, "total": self.total,
+             "current": self.current, "error": self.error, "log": self.log}
+        if self.status != "running":
+            d["results"] = self.results
+        return d
+
+
+JOBS = {}
 TOKEN = secrets.token_urlsafe(24)
 
 
@@ -133,6 +191,11 @@ class Handler(BaseHTTPRequestHandler):
                 with STORE.lock:
                     items = [(fid, f["result"]) for fid, f in STORE.files.items()]
                 return self._json({"results": [_result_payload(fid, r) for fid, r in items]})
+            if url.path == "/api/crawl":
+                job = JOBS.get((q.get("job") or [""])[0])
+                if not job:
+                    return self._error("Job unbekannt", 404)
+                return self._json(job.snapshot())
             return self._error("not found", 404)
         except Exception as exc:
             traceback.print_exc()
@@ -222,6 +285,16 @@ class Handler(BaseHTTPRequestHandler):
                     _open_folder(path)
                     return self._json({"ok": True})
                 return self._error("Ordner nicht gefunden", 404)
+            if url.path == "/api/crawl":
+                job = CrawlJob(payload)
+                JOBS[job.id] = job
+                job.start()
+                return self._json({"job": job.id})
+            if url.path == "/api/crawl_cancel":
+                job = JOBS.get(payload.get("job", ""))
+                if job:
+                    job.cancelled = True
+                return self._json({"ok": True})
             if url.path == "/api/remove":
                 with STORE.lock:
                     for fid in payload.get("ids", []):

@@ -224,3 +224,18 @@ body.drag::after {
 .export-choice p { margin: 4px 0 10px; font-size: 13px; }
 .export-choice .field { margin: 8px 0; font-weight: 500; font-size: 13px; }
 @media (max-width: 640px) { .export-choice { grid-template-columns: 1fr; } }
+
+.url-opts { display: grid; grid-template-columns: 2fr 1fr; gap: 12px; }
+.dialog select, .dialog input[type=number] { width: 100%; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--border);
+  background: var(--panel-2); color: var(--text); font: inherit; margin-top: 4px; }
+.progress { height: 8px; background: var(--panel-2); border: 1px solid var(--border); border-radius: 99px; overflow: hidden; margin: 12px 0 6px; }
+.progress div { height: 100%; width: 0; background: var(--accent); transition: width .3s; }
+#url-status { font-size: 12px; word-break: break-all; }
+.crawl-log { max-height: 220px; overflow: auto; font-size: 12.5px; margin: 10px 0 0; padding: 0; list-style: none; }
+.crawl-log li { display: grid; grid-template-columns: 110px 1fr; gap: 8px; padding: 3px 0; border-bottom: 1px solid var(--border); }
+.crawl-log .st { font-weight: 600; }
+.crawl-log .st.ok { color: var(--good); }
+.crawl-log .st.bad { color: var(--sev-high); }
+.crawl-log .u { word-break: break-all; }
+.crawl-log .n { grid-column: 2; color: var(--muted); font-size: 11.5px; }
+@media (max-width: 640px) { .url-opts { grid-template-columns: 1fr; } }

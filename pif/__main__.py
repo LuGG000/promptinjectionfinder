@@ -84,6 +84,45 @@ def cmd_clean(args) -> int:
     return 0
 
 
+def cmd_scan_url(args) -> int:
+    from .cleaner import export
+    from .crawler import Crawler
+    from .scanner import scan_bytes
+
+    def progress(done, total, url):
+        print(f"  [{done + 1}/{total}] {url}", file=sys.stderr)
+
+    crawler = Crawler(args.url, max_depth=args.depth, max_pages=args.max_pages, same_host=not args.all_hosts,
+                      respect_robots=not args.ignore_robots, include_documents=not args.no_documents,
+                      discover_mentions=args.discover, progress=progress)
+    res = crawler.run()
+    for e in res.log:
+        if e.status != "geladen":
+            print(f"  {e.status}: {e.url} {e.note}", file=sys.stderr)
+    items, worst, out = [], 0.0, []
+    for page in res.pages:
+        r = scan_bytes(page.name, page.data, path=page.url, extra_css=page.css)
+        worst = max(worst, r.risk_score)
+        out.append(r)
+        items.append({"name": page.name, "data": page.data, "result": r, "ids": None})
+        if not args.json:
+            print(f"\n== {page.url}  [{r.filetype}]  {VERDICT_DE[r.verdict]}  Risiko {r.risk_score:.0f}/100")
+            for f in r.findings:
+                if f.score >= args.min_score:
+                    print(f"  [{SEV_DE[f.severity]:>8} {f.score:5.1f}] {f.title}")
+                    if args.verbose and f.evidence:
+                        print("           Beleg: " + f.evidence[:300].replace("\n", " ⏎ "))
+    if args.json:
+        print(json.dumps([r.to_dict() for r in out], ensure_ascii=False, indent=2))
+    if args.out and items:
+        info = export(items, args.out)
+        print(f"\nExport: {info['out_dir']}")
+    if not res.pages:
+        print("Keine Seite geladen.", file=sys.stderr)
+        return 2
+    return 1 if worst >= args.fail_at else 0
+
+
 def cmd_gui(args) -> int:
     from .server import run
 
@@ -111,6 +150,21 @@ def main(argv=None) -> int:
     c.add_argument("--min-score", type=float, default=0.0)
     c.add_argument("--all", action="store_true", help="auch Funde entfernen, die standardmäßig nicht entfernt werden")
     c.set_defaults(func=cmd_clean)
+
+    u = sub.add_parser("scan-url", help="Webseite (und Unterseiten) laden und scannen")
+    u.add_argument("url")
+    u.add_argument("--depth", type=int, default=1, help="Link-Tiefe (0 = nur diese Seite, Standard 1)")
+    u.add_argument("--max-pages", type=int, default=30)
+    u.add_argument("--all-hosts", action="store_true", help="auch Links auf andere Domains folgen")
+    u.add_argument("--ignore-robots", action="store_true", help="robots.txt ignorieren (nur für eigene Seiten)")
+    u.add_argument("--no-documents", action="store_true", help="verlinkte PDF/TXT/MD nicht laden")
+    u.add_argument("--discover", action="store_true", help="auch im Text/Kommentaren erwähnte Pfade prüfen")
+    u.add_argument("--out", help="bereinigte Seiten + Bericht in diesen Ordner exportieren")
+    u.add_argument("--json", action="store_true")
+    u.add_argument("--min-score", type=float, default=0.0)
+    u.add_argument("--fail-at", type=float, default=65.0)
+    u.add_argument("-v", "--verbose", action="store_true")
+    u.set_defaults(func=cmd_scan_url)
 
     g = sub.add_parser("gui", help="Weboberfläche starten (offline, localhost)")
     g.add_argument("paths", nargs="*", help="optional: Dateien/Ordner direkt beim Start scannen")

@@ -207,6 +207,16 @@ def _unique(path: str) -> str:
     return f"{base}_{i}{ext}"
 
 
+def _safe_parts(name: str) -> list:
+    """Relative path parts of a (possibly URL-derived) name, safe on every OS."""
+    parts = []
+    for part in re.split(r"[\\/]+", name):
+        part = re.sub(r'[<>:"|?*\x00-\x1f]', "_", part).strip(" .")
+        if part and part not in (".", ".."):
+            parts.append(part[:120])
+    return parts or ["datei"]
+
+
 def default_export_dir(base: str = None) -> str:
     stamp = _dt.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     base = base or os.path.join(os.path.expanduser("~"), "Documents", "PromptInjectionFinder_Export")
@@ -225,7 +235,8 @@ def export(items, out_dir: str) -> dict:
     for it in items:
         name, data, result = it["name"], it["data"], it["result"]
         cleaned = clean_document(name, data, result, it.get("ids"))
-        target = _unique(os.path.join(clean_dir, os.path.basename(name)))
+        target = _unique(os.path.join(clean_dir, *_safe_parts(name)))
+        os.makedirs(os.path.dirname(target), exist_ok=True)
         with open(target, "wb") as fh:
             fh.write(cleaned["data"])
         written.append(target)

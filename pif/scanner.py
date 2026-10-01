@@ -103,7 +103,8 @@ def _absorb(findings: list) -> list:
     return final
 
 
-def scan_bytes(name: str, data: bytes, path: str = "") -> ScanResult:
+def scan_bytes(name: str, data: bytes, path: str = "", extra_css: str = "") -> ScanResult:
+    """``extra_css``: external stylesheets of a web page (needed to see CSS-hidden text)."""
     ftype = detect_type(name, data)
     result = ScanResult(path=path or name, name=os.path.basename(name), filetype=ftype)
     try:
@@ -117,7 +118,7 @@ def scan_bytes(name: str, data: bytes, path: str = "") -> ScanResult:
             text, enc = decode_text(data)
             findings = analyze_text(text)
             if ftype in ("markdown", "html"):
-                findings += analyze_markup(text, is_html=ftype == "html")
+                findings += analyze_markup(text, is_html=ftype == "html", extra_css=extra_css)
             result.findings = _absorb(findings)
             result.text_preview = text[:PREVIEW_LIMIT]
             result.stats = {"encoding": enc, "chars": len(text), "lines": text.count("\n") + 1,

@@ -1,6 +1,6 @@
 # PromptInjectionFinder
 
-**Deterministischer, vollständig offline arbeitender Scanner für versteckte Prompt Injections in PDF-, Markdown-, Text- und HTML-Dateien – mit Bereinigung und Export.**
+**Deterministischer, offline arbeitender Scanner für versteckte Prompt Injections in PDF-, Markdown-, Text- und HTML-Dateien sowie ganzen Webseiten (per Link inklusive Unterseiten) – mit Bereinigung und Export.**
 
 Wer Text aus Webseiten, PDFs oder Dokumenten an ein KI-Modell weitergibt, gibt oft mehr weiter, als er sieht:
 weißer Text auf weißem Grund, winzige oder verdeckte Schrift, unsichtbare Unicode-Zeichen, in Emojis versteckte Bytes,
@@ -51,6 +51,28 @@ python3 -m venv .venv && .venv/bin/pip install -r requirements.txt   # Windows: 
    - **In Ordner speichern:** schreibt in einen frei wählbaren Ordner und öffnet ihn auf Wunsch im Dateimanager.
 
    Die Originale bleiben unverändert.
+
+### Webseiten scannen (per Link)
+
+Über **Webseite scannen** gibst du eine URL ein. Das Programm lädt die Seite und folgt auf Wunsch den Links und Unterseiten.
+
+- **Link-Tiefe:** 0 = nur diese Seite, 1–3 = Links weiterverfolgen. Dazu kommt ein Limit für die Seitenzahl, standardmäßig 30.
+- **Nur dieselbe Domain** ist voreingestellt; **robots.txt** wird beachtet. Beides lässt sich für eigene Seiten abschalten.
+- **Verlinkte Dokumente** (PDF, TXT, MD, …) und **iframes** werden mitgeladen und mitgescannt.
+- **Externe Stylesheets** werden mitgeladen, inklusive CSS-Variablen und Farbverläufen. Nur so wird Text erkannt, der über eine CSS-Klasse
+  versteckt ist. `@media print` und Mobil-Regeln werden ignoriert.
+- **Reiter, Unterseiten und Aufklappbereiche**, die per CSS-Zustand (`.page.active`, `:target`, …) oder per Skript umgeschaltet werden,
+  zählen als normaler Inhalt und nicht als „versteckt“. Versteckte Elemente *innerhalb* solcher Reiter werden trotzdem gefunden.
+- Optional: **im Text/in Kommentaren erwähnte Dateien ausprobieren**, z. B. `vorlage.html` aus einem HTML-Kommentar.
+- Seiten mit identischem Inhalt werden nur einmal gescannt, und ein Protokoll zeigt jede URL mit Status (geladen, 404, robots, Duplikat).
+
+JavaScript wird nicht ausgeführt. Analysiert wird das ausgelieferte HTML/CSS, also genau das, was auch die meisten KI-Tools und
+Scraper erhalten. Inhalte, die erst per Skript nachgeladen werden, sind deshalb nicht enthalten. Das ist die einzige Funktion,
+die das Internet nutzt.
+
+```bash
+python -m pif scan-url https://beispiel.de/ --depth 2 --max-pages 50 --discover --out export/
+```
 
 ### Kommandozeile
 

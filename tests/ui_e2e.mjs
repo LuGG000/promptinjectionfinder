@@ -132,6 +132,25 @@ try {
   for (let i = 0; i < 40 && !fs.existsSync(path.join(dl, "PromptInjectionFinder_Export.zip")); i++) await sleep(250);
   check("zip download via browser", fs.existsSync(path.join(dl, "PromptInjectionFinder_Export.zip")));
 
+  // website scan through the dialog (optional 5th argument: URL)
+  const SITE = process.argv[5];
+  if (SITE) {
+    await js("document.querySelector('#dlg-export').open && document.querySelector('#dlg-export').close()");
+    const before = await js("document.querySelectorAll('#file-list li').length");
+    await js("document.querySelector('#btn-url').click()");
+    await waitFor("document.querySelector('#dlg-url').open");
+    await js(`document.querySelector('#url-input').value = ${JSON.stringify(SITE)}; document.querySelector('#url-depth').value = '1'; document.querySelector('#url-go').click()`);
+    await waitFor("!document.querySelector('#url-progress').hidden");
+    await waitFor("document.querySelector('#url-go').hidden === false && /gescannt|Fehler/.test(document.querySelector('#url-status').innerText)", 180000);
+    const status = await js("document.querySelector('#url-status').innerText");
+    const after = await js("document.querySelectorAll('#file-list li').length");
+    const logRows = await js("document.querySelectorAll('.crawl-log li').length");
+    check("website scan via dialog", /gescannt/.test(status) && after > before, `${status} (+${after - before} Dateien, ${logRows} Protokollzeilen)`);
+    const shotUrl = await send("Page.captureScreenshot", { format: "png" });
+    fs.writeFileSync(path.join(process.env.TEMP, "pif_cdp_url.png"), Buffer.from(shotUrl.result.data, "base64"));
+    await js("document.querySelector('#dlg-url').close()");
+  }
+
   // theme toggle
   const before = await js("getComputedStyle(document.body).backgroundColor");
   await js("document.querySelector('#dlg-export').close(); document.querySelector('#btn-theme').click()");

@@ -144,7 +144,7 @@ def hiding_reasons(props: dict, bg=None) -> tuple:
         hard.append("clip (vollständig abgeschnitten)")
     if re.search(r"scale\(\s*0(\.0+)?\s*[,)]", props.get("transform", "")):
         hard.append("transform:scale(0)")
-    if props.get("color"):
+    if props.get("color") and bg != UNKNOWN_BG:
         c = parse_color(props["color"])
         if c is not None:
             if c[3] <= 0.1:
@@ -155,18 +155,47 @@ def hiding_reasons(props: dict, bg=None) -> tuple:
                     hard.append(f"color:{props['color']} auf Hintergrund (Kontrast {ratio:.2f}:1)")
                 elif ratio < 2.0:
                     soft.append(f"color:{props['color']} – sehr schwacher Kontrast ({ratio:.2f}:1)")
-    if props.get("-webkit-text-fill-color"):
+    if props.get("-webkit-text-fill-color") and bg != UNKNOWN_BG:
         c = parse_color(props["-webkit-text-fill-color"])
         if c is not None and (c[3] <= 0.1 or contrast_ratio(c, bg or (255, 255, 255)) < 1.35):
             hard.append("text-fill-color unsichtbar")
     return hard, soft
 
 
+UNKNOWN_BG = "unknown"  # background image: the real contrast cannot be judged
+
+
+_COLOR_TOKEN = re.compile(r"#[0-9a-fA-F]{3,8}\b|rgba?\([^)]*\)|hsla?\([^)]*\)|\b[a-z]+\b")
+
+
 def background_of(props: dict):
-    for key in ("background-color", "background"):
-        if key in props:
-            for token in re.split(r"\s+(?![^(]*\))", props[key]):
-                c = parse_color(token)
-                if c is not None and c[3] > 0.5:
-                    return c[:3]
+    """Effective background colour (r, g, b), UNKNOWN_BG for images, or None if not set."""
+    for key in ("background-color", "background", "background-image"):
+        val = props.get(key)
+        if not val:
+            continue
+        if "url(" in val:
+            return UNKNOWN_BG
+        if "gradient(" in val:
+            cols = [c for c in (parse_color(t) for t in _COLOR_TOKEN.findall(val)) if c is not None and c[3] > 0.3]
+            if cols:  # average of the gradient stops
+                return tuple(sum(c[i] for c in cols) / len(cols) for i in range(3))
+            return UNKNOWN_BG
+        for token in re.split(r"\s+(?![^(]*\))", val):
+            c = parse_color(token)
+            if c is not None and c[3] > 0.5:
+                return c[:3]
     return None
+
+
+def resolve_vars(props: dict, variables: dict) -> dict:
+    """Substitute var(--name, fallback) with the collected custom properties."""
+    out = {}
+    for k, v in props.items():
+        for _ in range(5):
+            if "var(" not in v:
+                break
+            v = re.sub(r"var\(\s*(--[\w-]+)\s*(?:,\s*([^()]*))?\)",
+                       lambda m: variables.get(m.group(1), m.group(2) or ""), v)
+        out[k] = v.strip()
+    return out

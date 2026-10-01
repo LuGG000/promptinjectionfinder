@@ -439,6 +439,102 @@ function setSelection(mode) {
   renderDetail();
 }
 
+/* ------------------------------------------------------------------ website scan */
+const crawl = { job: null, timer: null };
+
+function openUrlDialog() {
+  $("#url-log").innerHTML = "";
+  $("#url-progress").hidden = true;
+  setCrawlRunning(false);
+  $("#dlg-url").showModal();
+  $("#url-input").focus();
+}
+
+function setCrawlRunning(on) {
+  $("#url-go").hidden = on;
+  $("#url-cancel").hidden = !on;
+  $("#url-close").disabled = on;
+  ["#url-input", "#url-depth", "#url-max", "#url-same", "#url-docs", "#url-discover", "#url-robots"]
+    .forEach((s) => ($(s).disabled = on));
+}
+
+async function startCrawl(ev) {
+  ev.preventDefault();
+  const url = $("#url-input").value.trim();
+  if (!url) { $("#url-input").focus(); return; }
+  const body = {
+    url,
+    depth: Number($("#url-depth").value),
+    max_pages: Math.max(1, Math.min(300, Number($("#url-max").value) || 30)),
+    same_host: $("#url-same").checked,
+    documents: $("#url-docs").checked,
+    discover: $("#url-discover").checked,
+    robots: $("#url-robots").checked,
+  };
+  $("#url-log").innerHTML = "";
+  $("#url-progress").hidden = false;
+  $("#url-bar").style.width = "2%";
+  $("#url-status").textContent = "Starte…";
+  setCrawlRunning(true);
+  try {
+    const { job } = await api("/api/crawl", { body });
+    crawl.job = job;
+    pollCrawl();
+  } catch (e) {
+    setCrawlRunning(false);
+    $("#url-status").textContent = "Fehler: " + e.message;
+  }
+}
+
+async function pollCrawl() {
+  if (!crawl.job) return;
+  let st;
+  try {
+    st = await api("/api/crawl?job=" + encodeURIComponent(crawl.job));
+  } catch (e) {
+    $("#url-status").textContent = "Fehler: " + e.message;
+    setCrawlRunning(false);
+    return;
+  }
+  const pct = st.total ? Math.min(100, Math.round((st.done / st.total) * 100)) : 0;
+  $("#url-bar").style.width = Math.max(2, st.phase === "Analysiere" ? 50 + pct / 2 : pct / 2) + "%";
+  $("#url-status").textContent = `${st.phase}: ${st.done}/${st.total} · ${st.current || ""}`;
+  if (st.status === "running") {
+    crawl.timer = setTimeout(pollCrawl, 400);
+    return;
+  }
+  crawl.job = null;
+  setCrawlRunning(false);
+  $("#url-bar").style.width = "100%";
+  if (st.status === "error") {
+    $("#url-status").textContent = "Fehler: " + st.error;
+  } else {
+    const results = st.results || [];
+    results.forEach(addResult);
+    sortFiles();
+    if (results.length) state.selected = results.slice().sort((a, b) => b.risk_score - a.risk_score)[0].file_id;
+    renderAll();
+    const bad = results.filter((r) => r.verdict !== "clean").length;
+    $("#url-status").textContent = `${st.status === "cancelled" ? "Abgebrochen. " : ""}${results.length} Seite(n) gescannt` +
+      (bad ? ` – ${bad} auffällig.` : " – alle unauffällig.");
+  }
+  renderCrawlLog(st.log || []);
+}
+
+function renderCrawlLog(log) {
+  if (!log.length) { $("#url-log").innerHTML = ""; return; }
+  $("#url-log").innerHTML = `<div class="lbl muted" style="margin-top:10px;font-size:12px">Protokoll</div><ul class="crawl-log">` +
+    log.map((e) => {
+      const ok = e.status === "geladen";
+      return `<li><span class="st ${ok ? "ok" : "bad"}">${esc(e.status)}</span><span class="u">${esc(e.url || "")}</span>` +
+        (e.note ? `<span class="n">${esc(e.note)}</span>` : "") + `</li>`;
+    }).join("") + `</ul>`;
+}
+
+async function cancelCrawl() {
+  if (crawl.job) await api("/api/crawl_cancel", { body: { job: crawl.job } }).catch(() => {});
+}
+
 /* ------------------------------------------------------------------ events */
 function initTheme() {
   let t = null;
@@ -465,6 +561,11 @@ function initEvents() {
     if (p) scanPath(p);
   };
   $("#btn-export").onclick = openExport;
+  $("#btn-url").onclick = openUrlDialog;
+  $("#drop-url").onclick = openUrlDialog;
+  $("#url-go").onclick = startCrawl;
+  $("#url-cancel").onclick = cancelCrawl;
+  $("#url-input").addEventListener("keydown", (e) => { if (e.key === "Enter") startCrawl(e); });
   $("#export-go").onclick = doExport;
   $("#export-zip").onclick = doExportZip;
   $("#btn-download").onclick = downloadCleaned;

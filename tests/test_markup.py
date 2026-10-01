@@ -124,3 +124,47 @@ def test_injection_inside_hidden_element_is_merged():
     r = scan_text(f'<span style="display:none">{INJ}</span>', "x.html")
     assert not any(f.category == "injection" for f in r.findings)
     assert r.findings[0].rule == "html.hidden_element"
+
+
+def test_print_media_rules_are_ignored():
+    html = ('<style>.chk{color:#000} @media print { .chk, .nav { display:none !important } .page{display:block} }'
+            '.page{display:none}.page.active{display:block}</style>'
+            '<span class="chk">Häkchen für erledigte Aufgaben</span>'
+            '<div class="page">Zweiter Reiter mit vielen Informationen</div>')
+    r = scan_text(html, "x.html")
+    assert not any(f.rule == "html.hidden_element" for f in r.findings)
+    tog = [f for f in r.findings if f.rule == "html.toggle_content"]
+    assert tog and tog[0].score < 20
+
+
+def test_hidden_inside_toggle_tab_is_found():
+    html = ('<style>.page{display:none}.page.active{display:block}</style>'
+            f'<div class="page"><p>Reiter</p><span style="display:none">{INJ}</span></div>')
+    r = scan_text(html, "x.html")
+    assert any(f.rule == "html.hidden_element" and f.severity == "critical" for f in r.findings)
+
+
+def test_injection_in_toggle_tab_still_reported():
+    html = f'<style>.tab{{display:none}}.tab:target{{display:block}}</style><div class="tab" id="t2">{INJ}</div>'
+    r = scan_text(html, "x.html")
+    assert r.verdict != "clean"
+
+
+def test_css_variables_and_gradients():
+    html = ('<style>:root{--bg:#101820;--fg:#f0f0f0}'
+            '.head{background:var(--bg);color:var(--fg)}'
+            '.hero{background:linear-gradient(135deg,#0b1f3a,#1e3a8a);color:#fff}'
+            '.img{background:url(x.jpg) center;color:#fff}'
+            f'.trap{{background:var(--fg);color:#f5f5f5}}</style>'
+            '<header class="head">Kopfzeile mit Titel und Menü</header>'
+            '<div class="hero">Großer Titel auf Farbverlauf hier</div>'
+            '<div class="img">Text auf einem Hintergrundbild hier</div>'
+            f'<p class="trap">{INJ}</p>')
+    r = scan_text(html, "x.html")
+    hidden = [f for f in r.findings if f.rule == "html.hidden_element"]
+    assert len(hidden) == 1 and INJ in hidden[0].decoded
+
+
+def test_data_attribute_tooltip_injection():
+    r = scan_text(f'<span class="begriff" data-erklaerung="{INJ}">Begriff</span>', "x.html")
+    assert any(f.rule == "html.attribute" for f in r.findings)

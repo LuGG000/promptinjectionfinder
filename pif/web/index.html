@@ -22,6 +22,7 @@
     <input id="file-input" type="file" multiple hidden accept=".pdf,.md,.markdown,.txt,.html,.htm,.csv,.json,.xml,.yaml,.yml,.log,.rst,.tex,.eml">
     <label class="btn" for="dir-input">Ordner hochladen</label>
     <input id="dir-input" type="file" webkitdirectory multiple hidden>
+    <button class="btn" id="btn-url">Webseite scannen</button>
     <button class="btn" id="btn-path">Pfad scannen</button>
     <button class="btn accent" id="btn-export" disabled>Bereinigen &amp; exportieren</button>
     <button class="btn icon" id="btn-theme" title="Hell/Dunkel umschalten" aria-label="Design umschalten">◐</button>
@@ -43,6 +44,7 @@
       <div class="drop-inner">
         <svg viewBox="0 0 48 48" width="56" height="56" aria-hidden="true"><path d="M24 31V9m0 0l-8 8m8-8l8 8" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/><path d="M8 30v6a4 4 0 004 4h24a4 4 0 004-4v-6" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg>
         <h2>Dokumente hier ablegen</h2>
+        <p><button class="btn primary" id="drop-url" type="button">Webseite per Link scannen</button></p>
         <p>PDF, Markdown, Text und HTML werden lokal auf versteckte Prompt Injections geprüft:<br>
           weißer/grauer/winziger Text, verdeckter Text, unsichtbare Unicode-Zeichen, Emoji-Smuggling,
           Homoglyphen, kodierte Payloads, versteckte Kommentare und mehr.</p>
@@ -92,6 +94,44 @@
     <div class="dlg-actions">
       <button class="btn" value="cancel">Abbrechen</button>
       <button class="btn primary" id="path-go" value="go">Scannen</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="dlg-url" class="dialog wide">
+  <form method="dialog">
+    <h2>Webseite scannen</h2>
+    <p class="muted">Lädt die Seite samt CSS, folgt optional Links und Unterseiten und prüft alles auf versteckte Prompt Injections.
+      Das ist die einzige Funktion, die das Internet nutzt.</p>
+    <label class="field">Adresse (URL)
+      <input id="url-input" type="text" placeholder="https://beispiel.de/seite.html" autocomplete="off" spellcheck="false">
+    </label>
+    <div class="url-opts">
+      <label class="field">Link-Tiefe
+        <select id="url-depth">
+          <option value="0">0 – nur diese Seite</option>
+          <option value="1" selected>1 – plus direkt verlinkte Seiten</option>
+          <option value="2">2 – zwei Ebenen tief</option>
+          <option value="3">3 – drei Ebenen tief</option>
+        </select>
+      </label>
+      <label class="field">Max. Seiten
+        <input id="url-max" type="number" min="1" max="300" value="30">
+      </label>
+    </div>
+    <label class="check"><input type="checkbox" id="url-same" checked> Nur dieselbe Domain</label>
+    <label class="check"><input type="checkbox" id="url-docs" checked> Verlinkte Dokumente mitscannen (PDF, TXT, MD …)</label>
+    <label class="check"><input type="checkbox" id="url-discover"> Auch im Text/in Kommentaren erwähnte Dateien ausprobieren</label>
+    <label class="check"><input type="checkbox" id="url-robots" checked> robots.txt beachten</label>
+    <div id="url-progress" hidden>
+      <div class="progress"><div id="url-bar"></div></div>
+      <div id="url-status" class="muted mono"></div>
+    </div>
+    <div id="url-log"></div>
+    <div class="dlg-actions">
+      <button class="btn" id="url-close" value="cancel">Schließen</button>
+      <button class="btn" id="url-cancel" type="button" hidden>Abbrechen</button>
+      <button class="btn primary" id="url-go" type="button">Scannen</button>
     </div>
   </form>
 </dialog>
