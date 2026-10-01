@@ -130,6 +130,18 @@ alle Smuggling-Techniken, 10 PDF-Versteckvarianten inklusive gedrehter Seiten un
 verschiedenen Kodierungen, Export und die Web-API inklusive Token- und DNS-Rebinding-Schutz.
 `tools/make_samples.py` erzeugt die Demo-Dateien in `samples/`.
 
+End-to-End-Test der Oberfläche: Chrome wird über das DevTools-Protokoll gesteuert, ohne zusätzliche Abhängigkeiten.
+Voraussetzungen sind Node ≥ 22 und Chrome:
+
+```bash
+python -m pif gui --no-browser --port 8812 &
+node tests/ui_e2e.mjs http://127.0.0.1:8812/ "<pfad>\samples\angriff_rezept.md,<pfad>\samples\angriff_lebenslauf.pdf" "<export-ordner>"
+```
+
+Für die Regelbasis wurden zwei Korpora harmloser Dateien als Fehlalarm-Benchmark genutzt: rund 1.500 Dateien aus npm
+(Doku, Markdown, HTML, JS) und rund 500 aus der Python-Standardbibliothek, pip und numpy. Dort liegt die Fehlalarmquote
+der Stufe *Verdächtig* bei unter 1 %.
+
 ## Eigenständige EXE (optional)
 
 ```bat
