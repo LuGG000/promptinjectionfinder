@@ -1,8 +1,36 @@
+# Python / Build
 __pycache__/
-*.pyc
+*.py[cod]
 .pytest_cache/
-export/
+.venv/
+venv/
 build/
 dist/
 *.spec
-.venv/
+*.egg-info/
+
+# Ergebnisse von Scans/Exporten (können Inhalte privater Dokumente enthalten)
+export/
+exports/
+*_Export/
+PromptInjectionFinder_Export/
+bereinigt/
+report.html
+report.json
+*.bereinigt.txt
+
+# Eigene/private Testdokumente nie committen – nur samples/ ist öffentlich
+private/
+local/
+*.local.*
+
+# Secrets, Logs, Editor- und OS-Dateien
+.env
+.env.*
+*.log
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db
+desktop.ini
