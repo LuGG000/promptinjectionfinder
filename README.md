@@ -61,6 +61,8 @@ python -m pif gui samples/ --port 8765         # Oberfläche mit vorgeladenen Da
 | Text unter Bildern oder Flächen | Zeichenreihenfolge (Z-Order) plus deckende Flächen und Bilder, auch wenn darüber anderer Text steht |
 | Abgeschnittener Text | Die Glyphenfarbe kommt im Rendering nicht vor |
 | Annotationen, Formularfelder, Links, Metadaten/XMP, JavaScript, Launch-Aktionen, eingebettete Dateien | Objekt- und Inhaltsanalyse |
+| Text auf ausgeblendeten Ebenen (Optional Content) | Analyse mit allen Ebenen eingeschaltet – andere PDF-Bibliotheken extrahieren diesen Text nämlich trotzdem |
+| Kontur- und Füllungs-Text | deckungsgleiche Spans (z. B. weiße Füllung mit schwarzer Kontur) werden zusammen bewertet und nicht doppelt gezählt |
 | OCR-Textebenen (Scans) | werden erkannt und *nicht* als versteckt gewertet; Injection-Text darin wird trotzdem gemeldet |
 
 ### Markdown / HTML

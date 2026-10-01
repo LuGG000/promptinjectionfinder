@@ -1,4 +1,6 @@
 * text=auto
+*.sh text eol=lf
 samples/** -text
 tests/fixtures/** -text
 *.pdf binary
+*.exe binary

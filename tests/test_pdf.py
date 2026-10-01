@@ -180,3 +180,20 @@ def test_text_on_hidden_layer():
     cleaned = clean_document("ocg.pdf", data, r, None)
     assert cleaned["rescan"].verdict == "clean"
     assert VISIBLE in cleaned["text"]
+
+
+@pytest.mark.parametrize("mode,stroke,fill,hidden", [
+    (1, (0, 0, 0), None, False),          # outline only, black
+    (2, (0, 0, 0), (1, 1, 1), False),     # white fill, black outline -> visible
+    (2, (1, 1, 1), (0, 0, 0), False),     # black fill, white outline -> visible
+    (1, (1, 1, 1), None, True),           # white outline only -> invisible
+    (2, (1, 1, 1), (1, 1, 1), True),      # white fill and outline -> invisible
+])
+def test_fill_and_stroke_text(mode, stroke, fill, hidden):
+    doc = pymupdf.open()
+    p = doc.new_page()
+    p.insert_text((72, 100), "Outline headline text for the brochure page", fontsize=20, render_mode=mode,
+                  color=stroke, fill=fill, border_width=0.05)
+    r = scan_bytes("o.pdf", doc.tobytes())
+    assert bool(_hidden(r)) is hidden
+    assert r.text_preview.count("Outline headline") == 1  # twin spans are not duplicated

@@ -134,6 +134,11 @@ def _span_text(span) -> str:
     return "".join(chr(c[0]) if c[0] >= 0 else "�" for c in span["chars"])
 
 
+def _twin_key(span) -> tuple:
+    b = span["bbox"]
+    return (_span_text(span), round(b[0]), round(b[1]), round(b[2]), round(b[3]))
+
+
 def _analyze_page(page, pno, model: PdfDocModel, stats: dict, render_page=None, off_layers=frozenset()):
     """``page`` provides the text (all layers switched on), ``render_page`` what a human sees."""
     rect = page.rect
@@ -170,10 +175,22 @@ def _analyze_page(page, pno, model: PdfDocModel, stats: dict, render_page=None, 
     if is_ocr:
         stats["ocr_pages"].append(pno + 1)
 
+    # Fill+stroke text appears as two congruent spans ("twins"), e.g. white fill with a
+    # black outline. The glyphs are visible if any twin is.
+    twins = {}
+    for s in trace:
+        twins.setdefault(_twin_key(s), []).append(s)
+    emitted = set()
+
     prev = None  # (origin_y, x_end, size)
     for span in trace:
         text = _span_text(span)
         sb = pymupdf.Rect(span["bbox"])
+        key = _twin_key(span)
+        if key in emitted:
+            continue  # same glyphs already analysed via their twin
+        emitted.add(key)
+        siblings = twins[key]
         size = float(span.get("size") or 0)
         hard, soft = [], []
         has_ink_chars = bool(text.strip())
@@ -209,6 +226,9 @@ def _analyze_page(page, pno, model: PdfDocModel, stats: dict, render_page=None, 
                     bg = _background(reg)
                     rgb = _rgb(span.get("color"), span.get("colorspace"))
                     ratio = contrast_ratio(rgb, bg)
+                    for sib in siblings:
+                        if sib is not span and sib.get("type", 0) not in (3, 7):
+                            ratio = max(ratio, contrast_ratio(_rgb(sib.get("color"), sib.get("colorspace")), bg))
                     if ratio < 1.3:
                         hard.append(f"Textfarbe entspricht Hintergrund (Kontrast {ratio:.2f}:1)")
                     elif ratio < 1.9:
