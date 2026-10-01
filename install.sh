@@ -51,7 +51,7 @@ print(max(tags, key=lambda t: tuple(int(x) for x in t[1:].split("."))) if tags e
   say "Downloading PromptInjectionFinder ${TAG:-(development version)}"
   mkdir -p "$(dirname "$DIR")"
   if [ -n "$TAG" ]; then
-    git -c advice.detachedHead=false clone --quiet --depth 50 --branch "$TAG" "$REPO" "$DIR"
+    git -c advice.detachedHead=false clone --quiet --branch "$TAG" "$REPO" "$DIR"
   else
     git clone --quiet "$REPO" "$DIR"
   fi
