@@ -145,7 +145,8 @@ function renderDetail() {
   if (st.pages) meta.push(`${st.pages} Seite${st.pages === 1 ? "" : "n"}`);
   if (st.chars != null) meta.push(`${st.chars.toLocaleString("de-DE")} Zeichen`);
   if (st.hidden_chars) meta.push(`${st.hidden_chars.toLocaleString("de-DE")} unsichtbar`);
-  if (st.encoding) meta.push(st.encoding);
+  if (st.encoding && !st.web) meta.push(st.encoding);
+  if (st.web) meta.push(st.rendered ? "Webseite · mit JavaScript dargestellt" : "Webseite · statisches HTML");
   if (f.path && f.path !== f.name) meta.push(f.path);
   $("#d-meta").innerHTML = meta.map((m) => `<span>${esc(m)}</span>`).join("");
   $("#d-score").textContent = Math.round(f.risk_score);
@@ -350,7 +351,9 @@ async function renderPreview(f) {
     const a = data.after;
     const cls = a.verdict === "clean" ? "note ok" : "note";
     const rest = a.findings.filter((x) => x.score >= 20);
+    const web = f.stats && f.stats.web;
     box.innerHTML = `<div class="${cls}"><b>${data.removed}</b> Fund(e) entfernt. Risiko danach: <b>${Math.round(a.risk_score)}/100</b> – ${VERDICT_DE[a.verdict]}.
+      ${web ? "<br>Webseite: Export als <b>Text in Anzeige-Reihenfolge mit erkannten Aufgaben</b> (Markdown). Versteckte Inhalte sind entfernt, Aufklappbares ist markiert." : ""}
       ${rest.length ? `<br>Verbleibend: ${rest.map((x) => esc(x.title)).join(" · ")}` : ""}
       ${f.filetype === "pdf" ? "<br><span class='muted'>Für PDFs wird der Text der bereinigten PDF-Datei angezeigt. Versteckte Textstellen wurden per Schwärzung (ohne sichtbare Box) entfernt.</span>" : ""}</div>
       <div class="docview mono">${visible(data.text)}</div>`;
@@ -443,6 +446,11 @@ function setSelection(mode) {
 const crawl = { job: null, timer: null };
 
 function openUrlDialog() {
+  const browser = state.info && state.info.browser;
+  $("#url-render-label").textContent = browser
+    ? `JavaScript ausführen – Seite wie im Browser darstellen (${browser})`
+    : "JavaScript ausführen – kein Chrome/Edge/Chromium/Brave gefunden, es wird das statische HTML genutzt";
+  $("#url-render").checked = !!browser;
   $("#url-log").innerHTML = "";
   $("#url-progress").hidden = true;
   setCrawlRunning(false);
@@ -456,6 +464,7 @@ function setCrawlRunning(on) {
   $("#url-close").disabled = on;
   ["#url-input", "#url-depth", "#url-max", "#url-same", "#url-docs", "#url-discover", "#url-robots"]
     .forEach((s) => ($(s).disabled = on));
+  $("#url-render").disabled = on || !(state.info && state.info.browser);
 }
 
 async function startCrawl(ev) {
@@ -470,6 +479,7 @@ async function startCrawl(ev) {
     documents: $("#url-docs").checked,
     discover: $("#url-discover").checked,
     robots: $("#url-robots").checked,
+    render: $("#url-render").checked && !$("#url-render").disabled,
   };
   $("#url-log").innerHTML = "";
   $("#url-progress").hidden = false;

@@ -227,6 +227,29 @@ def _hidden_by_attrs(tag: str, attrs: dict) -> tuple:
     return hard, soft
 
 
+_ARIA_TOGGLE_ROLES = {"tabpanel", "dialog", "alertdialog", "menu", "listbox", "tooltip", "region"}
+
+
+def toggle_reason(hard, attrs: dict, toggles, scripts: str) -> str:
+    """Why a display/visibility-hidden element is still regular content (tab, accordion,
+    sub-page, solution behind a button) – or "" if it is really hidden."""
+    if not hard or not all(h.startswith(("display:none", "visibility", "hidden-Attribut", "CSS-Klasse")) for h in hard):
+        return ""
+    classes = set(attrs.get("class", "").lower().split())
+    if classes & toggles:
+        return "CSS-Zustand ." + "/.".join(sorted(classes & toggles))
+    if attrs.get("role", "").lower() in _ARIA_TOGGLE_ROLES and (attrs.get("aria-labelledby") or attrs.get("id")):
+        return f"ARIA-{attrs['role'].lower()}"
+    if scripts:
+        el_id = attrs.get("id", "")
+        if el_id and el_id in scripts:
+            return "per Skript umgeschaltet"
+        for c in classes:
+            if len(c) >= 3 and re.search(r"[.'\"\s]" + re.escape(c) + r"\b", scripts):
+                return "per Skript umgeschaltet"
+    return ""
+
+
 def analyze_html_structure(text: str, hidden_base: float = 35.0, extra_css: str = "") -> list:
     findings = []
     css, toggles = _css_rules(text, extra_css)
@@ -302,14 +325,7 @@ def analyze_html_structure(text: str, hidden_base: float = 35.0, extra_css: str 
         soft += s2
         # toggled tabs/sub-pages are normal content: hidden things *inside* them must still be found
         ancestor_hidden = any((e["hidden"] and not e.get("toggle")) or e["soft"] for e in stack)
-        toggle = ""
-        if hard and all(h.startswith(("display:none", "visibility", "hidden-Attribut", "CSS-Klasse")) for h in hard):
-            classes = set(attrs.get("class", "").lower().split())
-            if classes & toggles:
-                toggle = "CSS-Zustand ." + "/.".join(sorted(classes & toggles))
-            elif scripts and ((attrs.get("id") and attrs["id"] in scripts) or
-                              any(len(c) > 3 and c in scripts for c in classes)):
-                toggle = "per Skript umgeschaltet"
+        toggle = toggle_reason(hard, attrs, toggles, scripts)
         # Text colour is inherited: an inherited invisible colour is reported on the ancestor.
         if tag == "input" and attrs.get("type", "").lower() == "hidden" and attrs.get("value"):
             ps, hits = payload_score(attrs["value"])

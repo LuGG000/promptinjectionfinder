@@ -36,11 +36,16 @@ class Store:
         self.lock = threading.Lock()
         self.files = {}  # id -> {"name", "path", "data", "result"}
 
-    def add(self, name, data, path="", extra_css=""):
-        res = scan_bytes(name, data, path=path or name, extra_css=extra_css)
+    def add(self, name, data, path="", extra_css="", web=False, source=b""):
+        if web:
+            from .scanner import scan_web_page
+            res = scan_web_page(name, data, path, extra_css, source)
+        else:
+            res = scan_bytes(name, data, path=path or name, extra_css=extra_css)
         fid = uuid.uuid4().hex[:12]
         with self.lock:
-            self.files[fid] = {"name": name, "path": path or name, "data": data, "result": res}
+            self.files[fid] = {"name": name, "path": path or name, "data": data, "result": res,
+                               "web": {"url": path, "css": extra_css} if web else None}
         return fid, res
 
     def get(self, fid):
@@ -81,6 +86,7 @@ class CrawlJob:
                               same_host=bool(o.get("same_host", True)), respect_robots=bool(o.get("robots", True)),
                               include_documents=bool(o.get("documents", True)),
                               discover_mentions=bool(o.get("discover", False)),
+                              render_js=bool(o.get("render", False)),
                               progress=self._progress, cancel=lambda: self.cancelled)
             res = crawler.run()
             self.log = [{"url": e.url, "status": e.status, "note": e.note} for e in res.log]
@@ -90,7 +96,9 @@ class CrawlJob:
                 if self.cancelled:
                     break
                 self.done, self.current = i, page.url
-                fid, r = STORE.add(page.name, page.data, path=page.url, extra_css=page.css)
+                is_html = page.name.lower().endswith((".html", ".htm")) or "html" in page.content_type
+                fid, r = STORE.add(page.name, page.rendered or page.data, path=page.url, extra_css=page.css,
+                                   web=is_html, source=page.data if page.rendered else b"")
                 self.results.append(_result_payload(fid, r))
             self.done = len(res.pages)
             self.status = "cancelled" if self.cancelled else "done"
@@ -185,8 +193,11 @@ class Handler(BaseHTTPRequestHandler):
             if not self._authorized():
                 return self._error("unauthorized", 401)
             if url.path == "/api/info":
+                from .render import find_browser
+                browser = find_browser()
                 return self._json({"version": __version__, "default_export_dir": default_export_dir(),
-                                   "supported": sorted(SUPPORTED_EXT)})
+                                   "supported": sorted(SUPPORTED_EXT),
+                                   "browser": os.path.basename(browser) if browser else None})
             if url.path == "/api/files":
                 with STORE.lock:
                     items = [(fid, f["result"]) for fid, f in STORE.files.items()]
@@ -249,7 +260,7 @@ class Handler(BaseHTTPRequestHandler):
                 f = STORE.get(payload.get("id"))
                 if not f:
                     return self._error("Datei unbekannt", 404)
-                cleaned = clean_document(f["name"], f["data"], f["result"], payload.get("ids"))
+                cleaned = clean_document(f["name"], f["data"], f["result"], payload.get("ids"), web=f.get("web"))
                 rescan = cleaned["rescan"]
                 return self._json({"text": cleaned["text"][:400_000], "removed": cleaned["removed"],
                                    "after": {"risk_score": rescan.risk_score, "verdict": rescan.verdict,
@@ -258,16 +269,20 @@ class Handler(BaseHTTPRequestHandler):
                 f = STORE.get(payload.get("id"))
                 if not f:
                     return self._error("Datei unbekannt", 404)
-                cleaned = clean_document(f["name"], f["data"], f["result"], payload.get("ids"))
-                fn = urllib.parse.quote(f["name"])
-                return self._send(200, cleaned["data"], "application/octet-stream",
+                cleaned = clean_document(f["name"], f["data"], f["result"], payload.get("ids"), web=f.get("web"))
+                body, fname = cleaned["data"], os.path.basename(f["name"])
+                if "markdown" in cleaned:
+                    body, fname = cleaned["markdown"].encode("utf-8"), os.path.splitext(fname)[0] + ".md"
+                fn = urllib.parse.quote(fname)
+                return self._send(200, body, "application/octet-stream",
                                   {"Content-Disposition": f"attachment; filename*=UTF-8''{fn}"})
             if url.path in ("/api/export", "/api/export_zip"):
                 items = []
                 for it in payload.get("items", []):
                     f = STORE.get(it.get("id"))
                     if f:
-                        items.append({"name": f["name"], "data": f["data"], "result": f["result"], "ids": it.get("ids")})
+                        items.append({"name": f["name"], "data": f["data"], "result": f["result"], "ids": it.get("ids"),
+                                      "web": f.get("web")})
                 if not items:
                     return self._error("Keine Dateien zum Exportieren")
                 if url.path == "/api/export_zip":

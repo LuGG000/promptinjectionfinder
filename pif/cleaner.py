@@ -181,8 +181,11 @@ def clean_pdf(data: bytes, findings) -> bytes:
     return out
 
 
-def clean_document(name: str, data: bytes, result: ScanResult, ids=None) -> dict:
-    """Clean one document. Returns {'data': bytes, 'text': str, 'removed': n, 'filetype': ...}."""
+def clean_document(name: str, data: bytes, result: ScanResult, ids=None, web: dict = None) -> dict:
+    """Clean one document. Returns {'data': bytes, 'text': str, 'removed': n, 'rescan': ScanResult}.
+
+    ``web`` = {"url": ..., "css": ...} marks a crawled web page: then 'text' / 'markdown' hold the
+    readable page text in display order with detected tasks (what users want instead of HTML)."""
     chosen = select(result, ids)
     if result.filetype == "pdf":
         cleaned_pdf = clean_pdf(data, chosen)
@@ -193,8 +196,16 @@ def clean_document(name: str, data: bytes, result: ScanResult, ids=None) -> dict
     out = _encode(new_text, enc if not enc.startswith("utf-16") and not enc.startswith("utf-32") else enc)
     if enc == "utf-8-sig":
         out = out if out.startswith(b"\xef\xbb\xbf") else b"\xef\xbb\xbf" + out
-    rescan = scan_bytes(name, out)
-    return {"data": out, "text": new_text, "removed": len(chosen), "rescan": rescan}
+    css = (web or {}).get("css", "")
+    rescan = scan_bytes(name, out, extra_css=css)
+    res = {"data": out, "text": new_text, "removed": len(chosen), "rescan": rescan}
+    if web is not None and result.filetype == "html":
+        from .textextract import web_markdown
+        note = (f"Prompt-Injection-Prüfung: Risiko {result.risk_score:.0f}/100 → nach Bereinigung "
+                f"{rescan.risk_score:.0f}/100 ({len(chosen)} Fund(e) entfernt)")
+        md, tasks = web_markdown(new_text, web.get("url", ""), css, note)
+        res.update({"text": md, "markdown": md, "tasks": tasks})
+    return res
 
 
 def _unique(path: str) -> str:
@@ -223,6 +234,33 @@ def default_export_dir(base: str = None) -> str:
     return os.path.join(base, stamp)
 
 
+def _write_web_aggregates(out_dir: str, pages) -> list:
+    """All page texts and all tasks of a website scan, in crawl order."""
+    from .textextract import tasks_to_markdown
+
+    stamp = _dt.datetime.now().strftime("%d.%m.%Y %H:%M")
+    full = [f"# Webseiten – bereinigter Text\n\n*{len(pages)} Seite(n), erstellt {stamp}*\n"]
+    task_md = [f"# Erkannte Aufgaben\n\n*aus {len(pages)} Seite(n), erstellt {stamp}*\n"]
+    total = 0
+    for url, cleaned in pages:
+        full.append("\n\n---\n\n" + cleaned["markdown"].replace("\n# ", "\n## ", 1) if cleaned["markdown"].startswith("# ")
+                    else cleaned["markdown"])
+        tasks = cleaned.get("tasks") or []
+        total += len(tasks)
+        if tasks:
+            task_md.append(f"\n## Seite: <{url}>\n")
+            task_md.append(tasks_to_markdown(tasks, heading="###"))
+    if total == 0:
+        task_md.append("\n*Auf den gescannten Seiten wurden keine Aufgaben erkannt.*\n")
+    out = []
+    for fname, content in (("Webseiten_Text_gesamt.md", "\n".join(full)), ("Aufgaben_gesamt.md", "\n".join(task_md))):
+        path = os.path.join(out_dir, fname)
+        with open(path, "w", encoding="utf-8", newline="\n") as fh:
+            fh.write(content.strip() + "\n")
+        out.append(path)
+    return out
+
+
 def export(items, out_dir: str) -> dict:
     """items: list of dicts {name, data, result, ids}. Writes cleaned files and reports."""
     from .report import html_report
@@ -232,13 +270,24 @@ def export(items, out_dir: str) -> dict:
     os.makedirs(clean_dir, exist_ok=True)
     written = []
     summary = []
+    web_pages = []
     for it in items:
         name, data, result = it["name"], it["data"], it["result"]
-        cleaned = clean_document(name, data, result, it.get("ids"))
-        target = _unique(os.path.join(clean_dir, *_safe_parts(name)))
-        os.makedirs(os.path.dirname(target), exist_ok=True)
-        with open(target, "wb") as fh:
-            fh.write(cleaned["data"])
+        cleaned = clean_document(name, data, result, it.get("ids"), web=it.get("web"))
+        if "markdown" in cleaned:
+            # web page: readable text + tasks instead of HTML
+            parts = _safe_parts(name)
+            parts[-1] = os.path.splitext(parts[-1])[0] + ".md"
+            target = _unique(os.path.join(clean_dir, *parts))
+            os.makedirs(os.path.dirname(target), exist_ok=True)
+            with open(target, "w", encoding="utf-8", newline="\n") as fh:
+                fh.write(cleaned["markdown"])
+            web_pages.append((it["web"].get("url") or name, cleaned))
+        else:
+            target = _unique(os.path.join(clean_dir, *_safe_parts(name)))
+            os.makedirs(os.path.dirname(target), exist_ok=True)
+            with open(target, "wb") as fh:
+                fh.write(cleaned["data"])
         written.append(target)
         if result.filetype == "pdf":
             txt_target = _unique(os.path.splitext(target)[0] + ".bereinigt.txt")
@@ -251,10 +300,13 @@ def export(items, out_dir: str) -> dict:
             "output": target,
             "before": result.to_dict(),
             "removed_findings": [f.id for f in select(result, it.get("ids"))],
+            "tasks": len(cleaned.get("tasks") or []),
             "after": {"risk_score": rescan.risk_score, "verdict": rescan.verdict,
                       "remaining_findings": [{"title": f.title, "score": f.score, "severity": f.severity}
                                              for f in rescan.findings]},
         })
+    if web_pages:
+        written += _write_web_aggregates(out_dir, web_pages)
     report_json = os.path.join(out_dir, "report.json")
     with open(report_json, "w", encoding="utf-8") as fh:
         json.dump({"generated": _dt.datetime.now().isoformat(timespec="seconds"), "files": summary}, fh,

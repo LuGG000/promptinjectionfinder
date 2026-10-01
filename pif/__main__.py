@@ -92,19 +92,30 @@ def cmd_scan_url(args) -> int:
     def progress(done, total, url):
         print(f"  [{done + 1}/{total}] {url}", file=sys.stderr)
 
+    from .render import find_browser
+    render = (not args.no_render) and bool(find_browser())
+    if not args.no_render and not render:
+        print("Hinweis: kein Chrome/Edge/Chromium/Brave gefunden – JavaScript wird nicht ausgeführt.", file=sys.stderr)
     crawler = Crawler(args.url, max_depth=args.depth, max_pages=args.max_pages, same_host=not args.all_hosts,
                       respect_robots=not args.ignore_robots, include_documents=not args.no_documents,
-                      discover_mentions=args.discover, progress=progress)
+                      discover_mentions=args.discover, progress=progress, render_js=render)
     res = crawler.run()
     for e in res.log:
         if e.status != "geladen":
             print(f"  {e.status}: {e.url} {e.note}", file=sys.stderr)
     items, worst, out = [], 0.0, []
+    from .scanner import scan_web_page
     for page in res.pages:
-        r = scan_bytes(page.name, page.data, path=page.url, extra_css=page.css)
+        is_html = page.name.lower().endswith((".html", ".htm")) or "html" in page.content_type
+        data = page.rendered or page.data
+        if is_html:
+            r = scan_web_page(page.name, data, page.url, page.css, page.data if page.rendered else b"")
+        else:
+            r = scan_bytes(page.name, data, path=page.url)
         worst = max(worst, r.risk_score)
         out.append(r)
-        items.append({"name": page.name, "data": page.data, "result": r, "ids": None})
+        items.append({"name": page.name, "data": data, "result": r, "ids": None,
+                      "web": {"url": page.url, "css": page.css} if is_html else None})
         if not args.json:
             print(f"\n== {page.url}  [{r.filetype}]  {VERDICT_DE[r.verdict]}  Risiko {r.risk_score:.0f}/100")
             for f in r.findings:
@@ -159,7 +170,8 @@ def main(argv=None) -> int:
     u.add_argument("--ignore-robots", action="store_true", help="robots.txt ignorieren (nur für eigene Seiten)")
     u.add_argument("--no-documents", action="store_true", help="verlinkte PDF/TXT/MD nicht laden")
     u.add_argument("--discover", action="store_true", help="auch im Text/Kommentaren erwähnte Pfade prüfen")
-    u.add_argument("--out", help="bereinigte Seiten + Bericht in diesen Ordner exportieren")
+    u.add_argument("--out", help="bereinigten Text + Aufgaben (Markdown) und Bericht in diesen Ordner exportieren")
+    u.add_argument("--no-render", action="store_true", help="kein JavaScript ausführen (nur ausgeliefertes HTML)")
     u.add_argument("--json", action="store_true")
     u.add_argument("--min-score", type=float, default=0.0)
     u.add_argument("--fail-at", type=float, default=65.0)

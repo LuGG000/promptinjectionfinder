@@ -49,6 +49,7 @@ class Fetched:
     content_type: str
     depth: int
     css: str = ""
+    rendered: bytes = b""  # DOM after JavaScript (empty if not rendered)
 
 
 @dataclass
@@ -122,9 +123,23 @@ def mentioned_paths(text: str, base_url: str) -> list:
     return list(dict.fromkeys(out))
 
 
-def name_for(url: str, content_type: str) -> str:
+def _disposition_filename(value: str) -> str:
+    if not value:
+        return ""
+    m = re.search(r"filename\*\s*=\s*(?:UTF-8'')?([^;]+)", value, re.I) or re.search(r'filename\s*=\s*"?([^";]+)"?', value, re.I)
+    return posixpath.basename(urllib.parse.unquote(m.group(1).strip())) if m else ""
+
+
+def name_for(url: str, content_type: str, disposition: str = "") -> str:
     p = urllib.parse.urlsplit(url)
     path = urllib.parse.unquote(p.path)
+    fname = _disposition_filename(disposition)
+    if not fname:  # signed download links often carry the name in the query string
+        q = urllib.parse.parse_qs(p.query)
+        fname = _disposition_filename(" ".join(q.get("response-content-disposition", [])))
+    if fname:
+        path = posixpath.join(posixpath.dirname(path.rstrip("/")) or "/", fname)
+        p = p._replace(query="")
     if path.endswith("/") or not path:
         path += "index.html"
     ext = posixpath.splitext(path)[1].lower()
@@ -147,7 +162,7 @@ def name_for(url: str, content_type: str) -> str:
 class Crawler:
     def __init__(self, start_url: str, max_depth: int = 1, max_pages: int = 30, same_host: bool = True,
                  respect_robots: bool = True, include_documents: bool = True, discover_mentions: bool = False,
-                 delay: float = 0.25, progress=None, cancel=None, opener=None):
+                 delay: float = 0.25, progress=None, cancel=None, opener=None, render_js: bool = False):
         url = start_url.strip()
         if not re.match(r"https?://", url, re.I):
             url = "https://" + url
@@ -165,6 +180,7 @@ class Crawler:
         self.progress = progress or (lambda *a: None)
         self.cancel = cancel or (lambda: False)
         self.opener = opener or urllib.request.build_opener()
+        self.render_js = render_js
         self._robots = {}
         self._css_cache = {}
         self._last = 0.0
@@ -195,10 +211,12 @@ class Crawler:
             time.sleep(wait)
         req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT, "Accept": "*/*",
                                                    "Accept-Language": "de,en;q=0.8"})
+        self.last_disposition = ""
         try:
             with self.opener.open(req, timeout=TIMEOUT) as r:
                 data = r.read(limit + 1)
                 status, ctype, final = r.status, (r.headers.get("Content-Type") or "").lower(), r.geturl()
+                self.last_disposition = r.headers.get("Content-Disposition") or ""
         except urllib.error.HTTPError as e:
             status, ctype, final, data = e.code, (e.headers.get("Content-Type") or "").lower(), url, b""
         finally:
@@ -258,12 +276,19 @@ class Crawler:
                 result.log.append(LogEntry(final, "Duplikat", f"gleicher Inhalt wie {digests[digest]}"))
                 continue
             digests[digest] = final
-            page = Fetched(final, name_for(final, ctype), data, ctype, depth)
+            page = Fetched(final, name_for(final, ctype, self.last_disposition), data, ctype, depth)
             result.pages.append(page)
             result.log.append(LogEntry(final, "geladen", f"{len(data) // 1024} KB · Tiefe {depth} · {origin}"))
             if not is_html:
                 continue
             text = data.decode(_charset(ctype, data), "replace")
+            if self.render_js:
+                from .render import render_dom
+                self.progress(len(result.pages) - 1, self.max_pages, "rendere " + final)
+                dom = render_dom(final)
+                if dom:
+                    page.rendered = dom.encode("utf-8")
+                    text = text + "\n" + dom  # links that only exist after JavaScript
             links, styles = extract_links(text, final)
             page.css = self._css_for(styles)
             if depth >= self.max_depth:

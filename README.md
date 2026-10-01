@@ -66,9 +66,23 @@ python3 -m venv .venv && .venv/bin/pip install -r requirements.txt   # Windows: 
 - Optional: **im Text/in Kommentaren erwähnte Dateien ausprobieren**, z. B. `vorlage.html` aus einem HTML-Kommentar.
 - Seiten mit identischem Inhalt werden nur einmal gescannt, und ein Protokoll zeigt jede URL mit Status (geladen, 404, robots, Duplikat).
 
-JavaScript wird nicht ausgeführt. Analysiert wird das ausgelieferte HTML/CSS, also genau das, was auch die meisten KI-Tools und
-Scraper erhalten. Inhalte, die erst per Skript nachgeladen werden, sind deshalb nicht enthalten. Das ist die einzige Funktion,
-die das Internet nutzt.
+**JavaScript:** Ist Chrome, Edge, Chromium oder Brave installiert, wird jede Seite zusätzlich wie im Browser dargestellt
+(headless, `--dump-dom`). So sind auch Inhalte enthalten, die erst per Skript entstehen, etwa generierte Aufgaben oder Reiter.
+Geprüft wird die dargestellte Seite *und* der ausgelieferte Quelltext. Was nur im Quelltext steht (Scraper und KI-Tools lesen es
+trotzdem), wird als „Nur im Seitenquelltext“ gemeldet. Ohne Browser wird das statische HTML genutzt. Das Scannen von Webseiten
+ist die einzige Funktion, die das Internet nutzt.
+
+**Export von Webseiten: Text und Aufgaben statt HTML.** Für jede Seite entsteht eine Markdown-Datei mit dem bereinigten Text in
+Anzeige-Reihenfolge:
+
+- Überschriften, Listen und Tabellen bleiben erhalten. Eingabefelder erscheinen als `____`, Beschriftungen von Grafiken/Schaltbildern
+  als `[Grafik: …]`, Reiter und Unterseiten mit ihrem Namen.
+- Echt versteckter Text, also Injections, fehlt. Inhalte, die erst nach einem Klick sichtbar werden (Tipp, Lösung, `<details>`),
+  sind als *aufklappbar* markiert.
+- Oben stehen die **erkannten Aufgaben**: Überschriften wie „Aufgabe 1.2“ oder „Fragen zur Sicherung“, Eingabefelder und
+  Lückentabellen, Arbeitsanweisungen mit Operatoren (berechne/berechnet/berechnen Sie, erkläre, beschreibt, …), Fragenlisten,
+  vorhandene Lösung/Tipp. Navigation und Fußzeile zählen nicht zu Aufgaben.
+- Zusätzlich entstehen `Webseiten_Text_gesamt.md` (alle Seiten in Crawl-Reihenfolge) und `Aufgaben_gesamt.md`.
 
 ```bash
 python -m pif scan-url https://beispiel.de/ --depth 2 --max-pages 50 --discover --out export/

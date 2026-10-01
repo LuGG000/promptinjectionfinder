@@ -149,6 +149,15 @@ try {
     const shotUrl = await send("Page.captureScreenshot", { format: "png" });
     fs.writeFileSync(path.join(process.env.TEMP, "pif_cdp_url.png"), Buffer.from(shotUrl.result.data, "base64"));
     await js("document.querySelector('#dlg-url').close()");
+    // the crawled page: preview must be readable text with tasks, not HTML
+    await js("Array.from(document.querySelectorAll('#file-list li')).find(li => /Webseite|html/i.test(li.innerText) && !/angriff|harmlos/.test(li.innerText)).click()");
+    await js("document.querySelector('[data-tab=preview]').click()");
+    await waitFor("document.querySelector('#tab-preview .docview') !== null", 60000);
+    const prev = await js("document.querySelector('#tab-preview .docview').innerText");
+    check("web preview is text with tasks", /Erkannte Aufgaben/.test(prev) && !/<html|<div|<script/i.test(prev),
+      prev.split("\n").filter((l) => l.startsWith("### ")).slice(0, 4).join(" | "));
+    const shotPrev = await send("Page.captureScreenshot", { format: "png" });
+    fs.writeFileSync(path.join(process.env.TEMP, "pif_cdp_webprev.png"), Buffer.from(shotPrev.result.data, "base64"));
   }
 
   // theme toggle

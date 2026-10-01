@@ -129,6 +129,33 @@ def scan_bytes(name: str, data: bytes, path: str = "", extra_css: str = "") -> S
     return result
 
 
+def scan_web_page(name: str, data: bytes, url: str, extra_css: str = "", source: bytes = b"") -> ScanResult:
+    """Scan a crawled HTML page. ``data`` is the rendered DOM (or the HTML), ``source`` the
+    delivered HTML when the page was rendered: findings that exist only in the source code
+    (e.g. removed by JavaScript, but still read by scrapers/LLM tools) are added for information."""
+    res = scan_bytes(name, data, path=url, extra_css=extra_css)
+    res.stats["web"] = True
+    res.stats["url"] = url
+    res.stats["rendered"] = bool(source)
+    if source:
+        src = scan_bytes(name, source, path=url, extra_css=extra_css)
+        seen = {(f.rule, (f.decoded or f.evidence)[:200]) for f in res.findings}
+        for f in src.findings:
+            key = (f.rule, (f.decoded or f.evidence)[:200])
+            if key in seen or f.score < 20:
+                continue
+            f.title = "Nur im Seitenquelltext: " + f.title
+            f.description += " (Im Quelltext vorhanden, in der dargestellten Seite nicht – Scraper und KI-Tools lesen ihn trotzdem.)"
+            f.location.start = f.location.end = None
+            f.location.ranges = []
+            f.location.target = "source"
+            f.removable = False
+            f.default_remove = False
+            res.findings.append(f)
+        res.findings.sort(key=lambda f: -f.score)
+    return res
+
+
 def scan_file(path: str) -> ScanResult:
     with open(path, "rb") as fh:
         data = fh.read()
