@@ -213,7 +213,13 @@ def _analyze_page(page, pno, model: PdfDocModel, stats: dict):
                     else:
                         pres = _presence(inner, rgb)
                         ink = _ink(inner, bg)
-                        cover = [i for i, r in occluders if i > span["seqno"] and (r + (-1, -1, 1, 1)).contains(sb)]
+                        later = [(i, r) for i, r in occluders if i > span["seqno"] and r.intersects(sb)]
+                        cover = [i for i, r in later if (r + (-1, -1, 1, 1)).contains(sb)]
+                        if not cover and later:
+                            # several shapes together may cover the text
+                            covered_area = sum((r & sb).get_area() for _, r in later)
+                            if covered_area >= 0.97 * sb.get_area():
+                                cover = [i for i, _ in later]
                         if cover:
                             # Ink found in the region may come from text painted *on top* of the cover.
                             first = min(cover)

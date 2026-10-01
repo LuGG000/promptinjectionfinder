@@ -81,6 +81,39 @@ def _encode(text: str, encoding: str) -> bytes:
         return text.encode("utf-8")
 
 
+_ACTIVE = re.compile(r"/S\s*/(JavaScript|Launch|SubmitForm|ImportData|RichMediaExecute)|/JS\s*[(<\d]")
+
+
+def _strip_pdf_actions(doc) -> None:
+    """Remove JavaScript / Launch actions from catalog, pages, annotations and the name tree."""
+    cat = doc.pdf_catalog()
+    for key in ("OpenAction", "AA"):
+        kind, val = doc.xref_get_key(cat, key)
+        if kind != "null" and (_ACTIVE.search(val) or (kind == "xref" and _ACTIVE.search(
+                doc.xref_object(int(val.split()[0]), compressed=False)))):
+            doc.xref_set_key(cat, key, "null")
+    kind, names = doc.xref_get_key(cat, "Names")
+    if kind != "null":
+        doc.xref_set_key(cat, "Names/JavaScript", "null")
+    for xref in range(1, doc.xref_length()):
+        try:
+            obj = doc.xref_object(xref, compressed=False)
+        except Exception:
+            continue
+        if "/AA" in obj:
+            doc.xref_set_key(xref, "AA", "null")
+        kind, val = doc.xref_get_key(xref, "A")
+        if kind != "null" and _ACTIVE.search(val or ""):
+            doc.xref_set_key(xref, "A", "null")
+        if _ACTIVE.search(obj) and "/Type /Catalog" not in obj and "/Type/Catalog" not in obj:
+            # stand-alone action dictionaries: neutralize the code itself
+            if doc.xref_get_key(xref, "JS")[0] != "null":
+                doc.xref_set_key(xref, "JS", "()")
+            if doc.xref_get_key(xref, "S")[1] in ("/JavaScript", "/Launch"):
+                doc.xref_set_key(xref, "S", "/Named")
+                doc.xref_set_key(xref, "N", "/NextPage")
+
+
 def clean_pdf(data: bytes, findings) -> bytes:
     import pymupdf
 
@@ -131,6 +164,8 @@ def clean_pdf(data: bytes, findings) -> bytes:
         for i in sorted(idxs, reverse=True):
             if i < len(links):
                 page.delete_link(links[i])
+    if scrub_js:
+        _strip_pdf_actions(doc)
     if scrub_js or scrub_emb:
         doc.scrub(attached_files=scrub_emb, clean_pages=False, embedded_files=scrub_emb, hidden_text=False,
                   javascript=scrub_js, metadata=False, redactions=False, remove_links=False, reset_fields=False,

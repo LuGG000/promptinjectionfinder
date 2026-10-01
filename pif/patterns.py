@@ -42,7 +42,10 @@ _RULES = [
      r"(ignore|ignoring|disregard|forget|skip|bypass|override|overlook|neglect|abandon|discard|drop) "
      r"(?:(all|any|every|each) )?(?:of )?(?:(the|your|my|these|those|its|its) )?"
      r"(previous|prior|preceding|above|earlier|former|foregoing|initial|original|old|existing|system|developer|safety|other|given|current) "
-     r"(instructions?|prompts?|directions?|directives?|commands?|rules|guidelines|context|messages?|guidance|constraints|programming|orders|input|content|tasks?)"),
+     r"(instructions?|prompts?|directions?|directives?|commands?|rules|guidelines|guidance|constraints|programming|system prompt)"),
+    ("en.override.ignore_previous_weak", "override", 35,
+     r"(ignore|disregard|forget|override|discard) (?:(all|any|every) )?(?:of )?(?:(the|your|these|those) )?"
+     r"(previous|prior|preceding|above|earlier|foregoing|initial|original) (context|messages?|content|input|text|tasks?|orders|conversation)"),
     ("en.override.ignore_all_instr", "override", 80,
      r"(ignore|disregard|forget|bypass|override) (all|any|every|your) (instructions?|prompts?|rules|guidelines|directives|constraints|programming)"),
     ("en.override.forget_everything", "override", 85,
@@ -331,11 +334,11 @@ class Hit:
 
 def _obfuscated(segment: str) -> bool:
     """True if a span looks like deliberately split words (s p a c e d, i.g.n.o.r.e, zero-width)."""
+    if any(is_invisible(ord(c)) or 0x1F100 <= ord(c) <= 0x1F1FF for c in segment):
+        return True
     tokens = re.findall(r"[^\W_]+", segment)
     if not tokens:
         return False
-    if any(is_invisible(ord(c)) for c in segment):
-        return True
     return sum(len(t) for t in tokens) / len(tokens) <= 2.5
 
 
