@@ -50,10 +50,9 @@ tags = re.findall(r"refs/tags/(v\d+\.\d+(?:\.\d+)?)$", sys.stdin.read(), re.M)
 print(max(tags, key=lambda t: tuple(int(x) for x in t[1:].split("."))) if tags else "")')
   say "Downloading PromptInjectionFinder ${TAG:-(development version)}"
   mkdir -p "$(dirname "$DIR")"
+  git clone --quiet "$REPO" "$DIR"
   if [ -n "$TAG" ]; then
-    git -c advice.detachedHead=false clone --quiet --branch "$TAG" "$REPO" "$DIR"
-  else
-    git clone --quiet "$REPO" "$DIR"
+    git -C "$DIR" -c advice.detachedHead=false checkout --quiet "$TAG"
   fi
 fi
 

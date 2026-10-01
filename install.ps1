@@ -60,9 +60,9 @@ if (Test-Path (Join-Path $Dir 'pif')) {
     $tag = $tags | Sort-Object { [version]($_.TrimStart('v')) } | Select-Object -Last 1
     Say "Downloading PromptInjectionFinder $tag"
     New-Item -ItemType Directory -Force (Split-Path $Dir) | Out-Null
-    if ($tag) { git -c advice.detachedHead=false clone --quiet --branch $tag $Repo $Dir }
-    else { git clone --quiet $Repo $Dir }
+    git clone --quiet $Repo $Dir
     if ($LASTEXITCODE -ne 0) { throw 'Download failed (access to the GitLab project?).' }
+    if ($tag) { git -C $Dir -c advice.detachedHead=false checkout --quiet $tag }
 }
 
 # ------------------------------------------------------------------ python environment
