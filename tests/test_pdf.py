@@ -175,7 +175,7 @@ def test_text_on_hidden_layer():
     data = doc.tobytes()
     r = scan_bytes("ocg.pdf", data)
     hidden = _hidden(r)
-    assert hidden and "ausgeblendeter PDF-Ebene" in hidden[0].title
+    assert hidden and "hidden PDF layer" in str(hidden[0].title)
     assert r.stats["hidden_layers"] == ["versteckt"]
     cleaned = clean_document("ocg.pdf", data, r, None)
     assert cleaned["rescan"].verdict == "clean"

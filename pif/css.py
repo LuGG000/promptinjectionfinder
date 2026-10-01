@@ -4,6 +4,8 @@ from __future__ import annotations
 import colorsys
 import re
 
+from .i18n import T
+
 NAMED_COLORS = {
     "white": (255, 255, 255), "snow": (255, 250, 250), "ivory": (255, 255, 240), "ghostwhite": (248, 248, 255),
     "whitesmoke": (245, 245, 245), "seashell": (255, 245, 238), "floralwhite": (255, 250, 240),
@@ -135,13 +137,13 @@ def hiding_reasons(props: dict, bg=None) -> tuple:
         for side in ("left", "top", "right", "bottom"):
             px = _px(props.get(side, ""))
             if px is not None and px <= -500:
-                hard.append(f"{side}:{props[side]} (außerhalb des Sichtbereichs)")
+                hard.append(T(f"{side}:{props[side]} (off-screen)", f"{side}:{props[side]} (außerhalb des Sichtbereichs)"))
     ti = _px(props.get("text-indent", ""))
     if ti is not None and ti <= -500:
         hard.append(f"text-indent:{props['text-indent']}")
     clip = props.get("clip", "") + props.get("clip-path", "")
     if re.search(r"rect\(\s*0[a-z]*[\s,]+0[a-z]*[\s,]+0[a-z]*[\s,]+0", clip) or re.search(r"inset\(\s*50%|circle\(\s*0", clip):
-        hard.append("clip (vollständig abgeschnitten)")
+        hard.append(T("clip (fully clipped)", "clip (vollständig abgeschnitten)"))
     if re.search(r"scale\(\s*0(\.0+)?\s*[,)]", props.get("transform", "")):
         hard.append("transform:scale(0)")
     if props.get("color") and bg != UNKNOWN_BG:
@@ -152,13 +154,15 @@ def hiding_reasons(props: dict, bg=None) -> tuple:
             else:
                 ratio = contrast_ratio(c, bg or (255, 255, 255))
                 if ratio < 1.35:
-                    hard.append(f"color:{props['color']} auf Hintergrund (Kontrast {ratio:.2f}:1)")
+                    hard.append(T(f"color:{props['color']} on its background (contrast {ratio:.2f}:1)",
+                                  f"color:{props['color']} auf Hintergrund (Kontrast {ratio:.2f}:1)"))
                 elif ratio < 2.0:
-                    soft.append(f"color:{props['color']} – sehr schwacher Kontrast ({ratio:.2f}:1)")
+                    soft.append(T(f"color:{props['color']} – very low contrast ({ratio:.2f}:1)",
+                                  f"color:{props['color']} – sehr schwacher Kontrast ({ratio:.2f}:1)"))
     if props.get("-webkit-text-fill-color") and bg != UNKNOWN_BG:
         c = parse_color(props["-webkit-text-fill-color"])
         if c is not None and (c[3] <= 0.1 or contrast_ratio(c, bg or (255, 255, 255)) < 1.35):
-            hard.append("text-fill-color unsichtbar")
+            hard.append(T("text-fill-color invisible", "text-fill-color unsichtbar"))
     return hard, soft
 
 

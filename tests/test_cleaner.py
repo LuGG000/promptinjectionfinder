@@ -91,7 +91,7 @@ def test_export_folder_and_reports(tmp_path):
     assert len(rep["files"]) == len(items)
     for s in rep["files"]:
         assert s["after"]["risk_score"] < 40, s["file"]
-    assert (out / "bereinigt" / "angriff_lebenslauf.bereinigt.txt").exists()
+    assert (out / "cleaned" / "angriff_lebenslauf.cleaned.txt").exists()
     # originals untouched
     for it in items:
         with open(os.path.join(SAMPLES, it["name"]), "rb") as fh:

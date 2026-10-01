@@ -10,6 +10,7 @@ import html
 import re
 
 from .css import UNKNOWN_BG, background_of, hiding_reasons, parse_color, parse_style, resolve_vars
+from .i18n import T, join, tr
 from .models import Finding, Location
 from .patterns import payload_score
 from .text_analyzer import _payload_note, context, line_of, visible_repr
@@ -215,15 +216,15 @@ def _element_props(tag: str, attrs: dict, css: list, ancestors=()) -> dict:
 def _hidden_by_attrs(tag: str, attrs: dict) -> tuple:
     hard, soft = [], []
     if "hidden" in attrs:
-        hard.append("hidden-Attribut")
+        hard.append(T("hidden attribute", "hidden-Attribut"))
     if tag == "template":
-        hard.append("<template> wird nicht dargestellt")
+        hard.append(T("<template> is not rendered", "<template> wird nicht dargestellt"))
     if attrs.get("aria-hidden", "").lower() == "true":
         soft.append("aria-hidden")
     classes = set(attrs.get("class", "").lower().split())
     hc = classes & HIDDEN_CLASSES
     if hc:
-        hard.append("CSS-Klasse " + ", ".join(sorted(hc)))
+        hard.append(T("CSS class ", "CSS-Klasse ") + ", ".join(sorted(hc)))
     return hard, soft
 
 
@@ -233,20 +234,20 @@ _ARIA_TOGGLE_ROLES = {"tabpanel", "dialog", "alertdialog", "menu", "listbox", "t
 def toggle_reason(hard, attrs: dict, toggles, scripts: str) -> str:
     """Why a display/visibility-hidden element is still regular content (tab, accordion,
     sub-page, solution behind a button) – or "" if it is really hidden."""
-    if not hard or not all(h.startswith(("display:none", "visibility", "hidden-Attribut", "CSS-Klasse")) for h in hard):
+    if not hard or not all(h.startswith(("display:none", "visibility", "hidden attribute", "CSS class")) for h in hard):
         return ""
     classes = set(attrs.get("class", "").lower().split())
     if classes & toggles:
-        return "CSS-Zustand ." + "/.".join(sorted(classes & toggles))
+        return T("CSS state .", "CSS-Zustand .") + "/.".join(sorted(classes & toggles))
     if attrs.get("role", "").lower() in _ARIA_TOGGLE_ROLES and (attrs.get("aria-labelledby") or attrs.get("id")):
         return f"ARIA-{attrs['role'].lower()}"
     if scripts:
         el_id = attrs.get("id", "")
         if el_id and el_id in scripts:
-            return "per Skript umgeschaltet"
+            return T("switched by script", "per Skript umgeschaltet")
         for c in classes:
             if len(c) >= 3 and re.search(r"[.'\"\s]" + re.escape(c) + r"\b", scripts):
-                return "per Skript umgeschaltet"
+                return T("switched by script", "per Skript umgeschaltet")
     return ""
 
 
@@ -268,9 +269,13 @@ def analyze_html_structure(text: str, hidden_base: float = 35.0, extra_css: str 
                 findings.append(Finding(
                     category="hidden" if hits else "info",
                     rule="html.toggle_content",
-                    title=f"Umschaltbarer Inhalt <{el['tag']}> (Reiter/Unterseite/Aufklappbereich)",
-                    description=("Dieser Bereich ist erst nach einem Klick sichtbar (" + el["toggle"] +
-                                 "). Er gehört zur normalen Seite und wird nicht als versteckt gewertet." + _payload_note(hits)),
+                    title=T(f"Toggleable content <{el['tag']}> (tab/sub-page/collapsible)",
+                            f"Umschaltbarer Inhalt <{el['tag']}> (Reiter/Unterseite/Aufklappbereich)"),
+                    description=(T("This part becomes visible after a click (", "Dieser Bereich ist erst nach einem Klick sichtbar (")
+                                 + el["toggle"]
+                                 + T("). It is part of the normal page and not counted as hidden.",
+                                     "). Er gehört zur normalen Seite und wird nicht als versteckt gewertet.")
+                                 + _payload_note(hits)),
                     score=max(45.0, ps) if hits else 5.0,
                     evidence=visible_repr(text[el["start"]:end_outer][:400]),
                     decoded=inner[:3000],
@@ -281,13 +286,17 @@ def analyze_html_structure(text: str, hidden_base: float = 35.0, extra_css: str 
                 return
             if el["hidden"]:
                 f = _hidden_finding(text, el["start"], end_outer, inner, "html.hidden_element",
-                                    f"Versteckter HTML-Inhalt <{el['tag']}>",
-                                    "Das Element wird durch " + "; ".join(el["hidden"]) +
-                                    " für Menschen unsichtbar gemacht, bleibt aber für KI-Modelle lesbar.", base=hidden_base)
+                                    T(f"Hidden HTML content <{el['tag']}>", f"Versteckter HTML-Inhalt <{el['tag']}>"),
+                                    T("The element is made invisible to humans by ", "Das Element wird durch ")
+                                    + join("; ", el["hidden"])
+                                    + T(", but stays readable for AI models.",
+                                        " für Menschen unsichtbar gemacht, bleibt aber für KI-Modelle lesbar."),
+                                    base=hidden_base)
             else:
                 f = _hidden_finding(text, el["start"], end_outer, inner, "html.low_visibility",
-                                    f"Kaum sichtbarer HTML-Inhalt <{el['tag']}>",
-                                    "Der Text ist schwer zu erkennen: " + "; ".join(el["soft"]) + ".", base=22.0, soft=True)
+                                    T(f"Barely visible HTML content <{el['tag']}>", f"Kaum sichtbarer HTML-Inhalt <{el['tag']}>"),
+                                    T("The text is hard to see: ", "Der Text ist schwer zu erkennen: ")
+                                    + join("; ", el["soft"]) + ".", base=22.0, soft=True)
             if f:
                 findings.append(f)
 
@@ -331,8 +340,10 @@ def analyze_html_structure(text: str, hidden_base: float = 35.0, extra_css: str 
             ps, hits = payload_score(attrs["value"])
             if hits:
                 findings.append(Finding(
-                    category="hidden", rule="html.hidden_input", title="Anweisung in verstecktem Formularfeld",
-                    description="Ein <input type=hidden> enthält Text." + _payload_note(hits),
+                    category="hidden", rule="html.hidden_input",
+                    title=T("Instruction in a hidden form field", "Anweisung in verstecktem Formularfeld"),
+                    description=T("An <input type=hidden> contains text.", "Ein <input type=hidden> enthält Text.")
+                    + _payload_note(hits),
                     score=min(100.0, ps + 20), evidence=visible_repr(tok), decoded=attrs["value"],
                     location=Location(start=m.start(), end=m.end(), line=line_of(text, m.start())), tags=["hidden"]))
         if tag in VOID or selfclose:
@@ -371,8 +382,11 @@ def analyze_attributes(text: str) -> list:
             ps, hits = payload_score(val)
             if hits:
                 findings.append(Finding(
-                    category="hidden", rule="html.attribute", title=f"Anweisung im Attribut „{key}“",
-                    description=f"Das {key}-Attribut von <{m.group(2)}> wird nicht als Fließtext angezeigt." + _payload_note(hits),
+                    category="hidden", rule="html.attribute",
+                    title=T(f"Instruction in the “{key}” attribute", f"Anweisung im Attribut „{key}“"),
+                    description=T(f"The {key} attribute of <{m.group(2)}> is not displayed as body text.",
+                                  f"Das {key}-Attribut von <{m.group(2)}> wird nicht als Fließtext angezeigt.")
+                    + _payload_note(hits),
                     score=min(100.0, ps + 15), evidence=visible_repr(m.group(0)[:400]), decoded=val,
                     location=Location(start=m.start(), end=m.end(), line=line_of(text, m.start())), tags=["hidden"]))
     return findings
@@ -385,9 +399,11 @@ def _url_risk(url: str) -> tuple:
     q = url.split("?", 1)[1] if "?" in url else ""
     path = url.split("://", 1)[-1].split("/", 1)[-1] if "/" in url.split("://", 1)[-1] else ""
     if _PLACEHOLDER.search(q) or re.search(r"\{|\}|%7b|\$", path, re.I):
-        return 75.0, "Die URL enthält Platzhalter/Parameter, in die ein Modell Gesprächsdaten einsetzen soll."
+        return 75.0, T("The URL contains placeholders/parameters into which a model is supposed to insert conversation data.",
+                       "Die URL enthält Platzhalter/Parameter, in die ein Modell Gesprächsdaten einsetzen soll.")
     if len(q) > 40:
-        return 25.0, "Externe Bild-URL mit langen Parametern – Bilder werden oft automatisch geladen (Datenabfluss möglich)."
+        return 25.0, T("External image URL with long parameters – images are often loaded automatically (possible data leak).",
+                       "Externe Bild-URL mit langen Parametern – Bilder werden oft automatisch geladen (Datenabfluss möglich).")
     return 0.0, ""
 
 
@@ -396,8 +412,10 @@ def analyze_markdown(text: str) -> list:
     # Markdown comment idioms: [//]: # (hidden), [comment]: <> (hidden)
     for m in re.finditer(r"(?m)^[ \t]*\[(?://|#|comment|hidden|note|_)?[^\]\n]*\]:[ \t]*(?:#|<>|<#>)[ \t]*(?:\((.*)\)|\"(.*)\"|'(.*)')[ \t]*$", text):
         inner = next((g for g in m.groups() if g is not None), "")
-        f = _hidden_finding(text, m.start(), m.end(), inner, "md.comment_link", "Versteckter Markdown-Kommentar",
-                            "Ein Link-Referenz-Kommentar ([//]: # (…)) wird beim Rendern nicht angezeigt.", base=28.0)
+        f = _hidden_finding(text, m.start(), m.end(), inner, "md.comment_link",
+                            T("Hidden Markdown comment", "Versteckter Markdown-Kommentar"),
+                            T("A link-reference comment ([//]: # (…)) is not shown when rendered.",
+                              "Ein Link-Referenz-Kommentar ([//]: # (…)) wird beim Rendern nicht angezeigt."), base=28.0)
         if f:
             findings.append(f)
     # Front matter (not rendered on most platforms)
@@ -406,8 +424,9 @@ def analyze_markdown(text: str) -> list:
         ps, hits = payload_score(fm.group(1))
         if hits:
             findings.append(Finding(
-                category="hidden", rule="md.front_matter", title="Anweisung im Front-Matter",
-                description="YAML-Front-Matter wird meist nicht gerendert, aber vom Modell gelesen." + _payload_note(hits),
+                category="hidden", rule="md.front_matter", title=T("Instruction in front matter", "Anweisung im Front-Matter"),
+                description=T("YAML front matter is usually not rendered, but read by the model.",
+                              "YAML-Front-Matter wird meist nicht gerendert, aber vom Modell gelesen.") + _payload_note(hits),
                 score=min(100.0, ps + 15), evidence=visible_repr(fm.group(0)[:500]), decoded=fm.group(1),
                 location=Location(start=fm.start(1), end=fm.end(1), line=line_of(text, fm.start(1))), tags=["hidden"]))
     # Images: exfiltration channel and alt texts
@@ -417,15 +436,19 @@ def analyze_markdown(text: str) -> list:
             score, why = _url_risk(url)
             if score:
                 findings.append(Finding(
-                    category="exfil", rule="md.image_exfil", title="Mögliche Datenabfluss-URL in Markdown-Bild",
+                    category="exfil", rule="md.image_exfil",
+                    title=T("Possible data exfiltration URL in a Markdown image", "Mögliche Datenabfluss-URL in Markdown-Bild"),
                     description=why, score=score, evidence=visible_repr(m.group(0)[:400]),
                     location=Location(start=m.start(), end=m.end(), line=line_of(text, m.start())), tags=["exfil"]))
-        for label, val in (("Alt-Text", alt), ("Bildtitel", title)):
+        for label, val in ((T("alt text", "Alt-Text"), alt), (T("title", "Bildtitel"), title)):
             ps, hits = payload_score(val)
             if hits:
                 findings.append(Finding(
-                    category="hidden", rule="md.image_text", title=f"Anweisung im {label} eines Bildes",
-                    description=f"Der {label} wird meist nicht angezeigt, aber vom Modell gelesen." + _payload_note(hits),
+                    category="hidden", rule="md.image_text",
+                    title=T("Instruction in the image ", "Anweisung im ") + label + T("", " eines Bildes"),
+                    description=T("The image ", "Der ") + label
+                    + T(" is usually not displayed, but read by the model.", " wird meist nicht angezeigt, aber vom Modell gelesen.")
+                    + _payload_note(hits),
                     score=min(100.0, ps + 15), evidence=visible_repr(m.group(0)[:400]), decoded=val,
                     location=Location(start=m.start(), end=m.end(), line=line_of(text, m.start())), tags=["hidden"]))
     # Link targets
@@ -433,15 +456,17 @@ def analyze_markdown(text: str) -> list:
         url, title = m.group(2), m.group(3) or ""
         if re.match(r"\s*(javascript:|vbscript:|data:text/html)", url, re.I):
             findings.append(Finding(
-                category="active", rule="md.script_link", title="Skript-Link in Markdown",
-                description="Der Link führt Code aus (javascript:/data:).", score=45.0,
+                category="active", rule="md.script_link", title=T("Script link in Markdown", "Skript-Link in Markdown"),
+                description=T("The link executes code (javascript:/data:).", "Der Link führt Code aus (javascript:/data:)."),
+                score=45.0,
                 evidence=visible_repr(m.group(0)[:300]),
                 location=Location(start=m.start(), end=m.end(), line=line_of(text, m.start()))))
         ps, hits = payload_score(title)
         if hits:
             findings.append(Finding(
-                category="hidden", rule="md.link_title", title="Anweisung im Link-Titel",
-                description="Der Titel eines Links ist nur als Tooltip sichtbar." + _payload_note(hits),
+                category="hidden", rule="md.link_title", title=T("Instruction in a link title", "Anweisung im Link-Titel"),
+                description=T("A link title is only visible as a tooltip.", "Der Titel eines Links ist nur als Tooltip sichtbar.")
+                + _payload_note(hits),
                 score=min(100.0, ps + 15), evidence=visible_repr(m.group(0)[:300]), decoded=title,
                 location=Location(start=m.start(), end=m.end(), line=line_of(text, m.start())), tags=["hidden"]))
     # Reference definitions with titles
@@ -451,8 +476,10 @@ def analyze_markdown(text: str) -> list:
         ps, hits = payload_score(title + " " + m.group(1))
         if hits and url not in ("#", "<>"):
             findings.append(Finding(
-                category="hidden", rule="md.reference", title="Anweisung in Link-Referenz-Definition",
-                description="Referenz-Definitionen werden nicht gerendert." + _payload_note(hits),
+                category="hidden", rule="md.reference",
+                title=T("Instruction in a link reference definition", "Anweisung in Link-Referenz-Definition"),
+                description=T("Reference definitions are not rendered.", "Referenz-Definitionen werden nicht gerendert.")
+                + _payload_note(hits),
                 score=min(100.0, ps + 15), evidence=visible_repr(m.group(0)), decoded=title,
                 location=Location(start=m.start(), end=m.end(), line=line_of(text, m.start())), tags=["hidden"]))
     return findings
@@ -464,15 +491,17 @@ _LATEX_WHITE = r"(?:white|#?fff(?:fff)?|ffffff|snow|ivory|whitesmoke|transparent
 def analyze_latex(text: str) -> list:
     findings = []
     pats = [
-        (r"\\(?:textcolor|color)\s*\{\s*" + _LATEX_WHITE + r"\s*\}\s*\{([^{}]*)\}", "LaTeX-Text in weißer Farbe"),
-        (r"\\color\s*\{\s*" + _LATEX_WHITE + r"\s*\}([^${}]*)", "LaTeX-Text in weißer Farbe"),
-        (r"\\(?:phantom|hphantom|vphantom)\s*\{([^{}]*)\}", "LaTeX-\\phantom (unsichtbar)"),
-        (r"\\(?:fontsize\s*\{\s*0*\.?\d\s*(?:pt)?\s*\}\s*\{[^}]*\}\\selectfont)\s*([^\n$]*)", "LaTeX-Winzschrift"),
+        (r"\\(?:textcolor|color)\s*\{\s*" + _LATEX_WHITE + r"\s*\}\s*\{([^{}]*)\}",
+         T("LaTeX text in white", "LaTeX-Text in weißer Farbe")),
+        (r"\\color\s*\{\s*" + _LATEX_WHITE + r"\s*\}([^${}]*)", T("LaTeX text in white", "LaTeX-Text in weißer Farbe")),
+        (r"\\(?:phantom|hphantom|vphantom)\s*\{([^{}]*)\}", T("LaTeX \\phantom (invisible)", "LaTeX-\\phantom (unsichtbar)")),
+        (r"\\(?:fontsize\s*\{\s*0*\.?\d\s*(?:pt)?\s*\}\s*\{[^}]*\}\\selectfont)\s*([^\n$]*)",
+         T("LaTeX tiny font", "LaTeX-Winzschrift")),
     ]
     for pat, title in pats:
         for m in re.finditer(pat, text, re.I):
             f = _hidden_finding(text, m.start(), m.end(), m.group(1), "latex.hidden", title,
-                                "Formel-/LaTeX-Befehle machen den Text unsichtbar.", base=32.0)
+                                T("Formula/LaTeX commands make the text invisible.", "Formel-/LaTeX-Befehle machen den Text unsichtbar."), base=32.0)
             if f:
                 findings.append(f)
     return findings
@@ -482,8 +511,10 @@ def analyze_comments(text: str) -> list:
     findings = []
     for m in re.finditer(r"<!--(.*?)(?:-->|\Z)", text, re.S):
         inner = m.group(1).strip()
-        f = _hidden_finding(text, m.start(), m.end(), inner, "markup.comment", "Versteckter HTML-Kommentar",
-                            "HTML-Kommentare werden nicht angezeigt, aber von KI-Modellen mitgelesen.", base=15.0)
+        f = _hidden_finding(text, m.start(), m.end(), inner, "markup.comment",
+                            T("Hidden HTML comment", "Versteckter HTML-Kommentar"),
+                            T("HTML comments are not displayed, but AI models read them.",
+                              "HTML-Kommentare werden nicht angezeigt, aber von KI-Modellen mitgelesen."), base=15.0)
         if f:
             findings.append(f)
     return findings
@@ -494,8 +525,9 @@ def active_content(text: str, is_html: bool = False) -> list:
     for m in re.finditer(r"<(script|iframe|object|embed|form|meta\s+http-equiv\s*=\s*[\"']?refresh)\b", text, re.I):
         tag = m.group(1).split()[0].lower()
         findings.append(Finding(
-            category="active", rule=f"markup.{tag}", title=f"Aktiver Inhalt <{tag}>",
-            description="Aktive Inhalte können Daten nachladen oder senden und gehören nicht in reine Text-Dokumente.",
+            category="active", rule=f"markup.{tag}", title=T(f"Active content <{tag}>", f"Aktiver Inhalt <{tag}>"),
+            description=T("Active content can load or send data and does not belong in plain text documents.",
+                          "Aktive Inhalte können Daten nachladen oder senden und gehören nicht in reine Text-Dokumente."),
             score=(12.0 if is_html else 30.0) if tag != "meta" else (12.0 if is_html else 25.0), evidence=context(text, m.start(), m.end()),
             location=Location(start=m.start(), end=m.end(), line=line_of(text, m.start())),
             removable=False, default_remove=False))

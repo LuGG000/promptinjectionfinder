@@ -12,20 +12,21 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
+from .i18n import T
 from .normalize import View, build_view, plain_view
 from .unicode_tools import is_invisible
 
 CATEGORY_TITLES = {
-    "override": "Anweisungs-Überschreibung",
-    "role": "Rollen-Übernahme",
-    "prompt_leak": "Systemprompt-Ausspähung",
-    "delimiter": "Gefälschte Chat-/Systemmarker",
-    "ai_address": "Direkte Ansprache einer KI",
-    "conceal": "Verschleierungs-Anweisung",
-    "exfil": "Datenabfluss / Exfiltration",
-    "tool": "Befehls-/Werkzeugausführung",
-    "jailbreak": "Jailbreak-Versuch",
-    "manipulation": "Bewertungs-/Ausgabe-Manipulation",
+    "override": T("Instruction override", "Anweisungs-Überschreibung"),
+    "role": T("Role hijacking", "Rollen-Übernahme"),
+    "prompt_leak": T("System prompt extraction", "Systemprompt-Ausspähung"),
+    "delimiter": T("Fake chat/system markers", "Gefälschte Chat-/Systemmarker"),
+    "ai_address": T("Direct address to an AI", "Direkte Ansprache einer KI"),
+    "conceal": T("Concealment instruction", "Verschleierungs-Anweisung"),
+    "exfil": T("Data exfiltration", "Datenabfluss / Exfiltration"),
+    "tool": T("Command/tool execution", "Befehls-/Werkzeugausführung"),
+    "jailbreak": T("Jailbreak attempt", "Jailbreak-Versuch"),
+    "manipulation": T("Rating/output manipulation", "Bewertungs-/Ausgabe-Manipulation"),
 }
 
 SEP = r"[^a-z0-9]*"

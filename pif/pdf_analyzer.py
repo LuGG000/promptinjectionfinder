@@ -22,6 +22,7 @@ import numpy as np
 import pymupdf
 
 from .css import contrast_ratio
+from .i18n import T, join
 from .models import Finding, Location
 from .patterns import payload_score
 from .text_analyzer import _payload_note, analyze_text, visible_repr
@@ -197,28 +198,28 @@ def _analyze_page(page, pno, model: PdfDocModel, stats: dict, render_page=None, 
         if has_ink_chars:
             ttype = span.get("type", 0)
             if span.get("layer") and span["layer"] in off_layers:
-                hard.append(f"auf ausgeblendeter PDF-Ebene „{span['layer']}“")
+                hard.append(T(f"on hidden PDF layer “{span['layer']}”", f"auf ausgeblendeter PDF-Ebene „{span['layer']}“"))
             if ttype in (3, 7) and not is_ocr:
-                hard.append("unsichtbarer Rendermodus (Tr 3)")
+                hard.append(T("invisible render mode (Tr 3)", "unsichtbarer Rendermodus (Tr 3)"))
             op = span.get("opacity")
             if op is not None and op <= 0.05:
-                hard.append(f"Transparenz {op:.2f}")
+                hard.append(T(f"transparency {op:.2f}", f"Transparenz {op:.2f}"))
             horizontal = abs(span["dir"][1]) < 0.1
             glyph_h = sb.height if horizontal else sb.width
             n_ink = max(1, len(text.strip()))
             if size < 1.5 or glyph_h < 1.5:
-                hard.append(f"winzige Schrift ({size:.1f} pt)")
+                hard.append(T(f"tiny font ({size:.1f} pt)", f"winzige Schrift ({size:.1f} pt)"))
             elif size < 4.0:
-                soft.append(f"sehr kleine Schrift ({size:.1f} pt)")
+                soft.append(T(f"very small font ({size:.1f} pt)", f"sehr kleine Schrift ({size:.1f} pt)"))
             if horizontal and len(text) >= 3 and sb.width / len(text) < 0.35:
-                hard.append("horizontal zusammengestaucht")
+                hard.append(T("squashed horizontally", "horizontal zusammengestaucht"))
             visible_area = sb & unrot
             if sb.is_empty or abs(sb) == 0:
                 pass
             elif visible_area.is_empty:
-                hard.append("außerhalb der sichtbaren Seite")
+                hard.append(T("outside the visible page", "außerhalb der sichtbaren Seite"))
             elif abs(visible_area) < 0.5 * abs(sb):
-                soft.append("teilweise außerhalb der Seite")
+                soft.append(T("partly outside the page", "teilweise außerhalb der Seite"))
             if not hard and ttype not in (3, 7) and not visible_area.is_empty:
                 reg = raster.region(visible_area, margin=2)
                 inner = raster.region(visible_area)
@@ -230,9 +231,10 @@ def _analyze_page(page, pno, model: PdfDocModel, stats: dict, render_page=None, 
                         if sib is not span and sib.get("type", 0) not in (3, 7):
                             ratio = max(ratio, contrast_ratio(_rgb(sib.get("color"), sib.get("colorspace")), bg))
                     if ratio < 1.3:
-                        hard.append(f"Textfarbe entspricht Hintergrund (Kontrast {ratio:.2f}:1)")
+                        hard.append(T(f"text colour matches background (contrast {ratio:.2f}:1)",
+                                      f"Textfarbe entspricht Hintergrund (Kontrast {ratio:.2f}:1)"))
                     elif ratio < 1.9:
-                        soft.append(f"sehr schwacher Kontrast ({ratio:.2f}:1)")
+                        soft.append(T(f"very low contrast ({ratio:.2f}:1)", f"sehr schwacher Kontrast ({ratio:.2f}:1)"))
                     else:
                         pres = _presence(inner, rgb)
                         ink = _ink(inner, bg)
@@ -249,9 +251,9 @@ def _analyze_page(page, pno, model: PdfDocModel, stats: dict, render_page=None, 
                             overdrawn = any(q > first and abs(qr & sb) > 0.2 * abs(sb)
                                             for q, qr in text_boxes)
                             if pres < 0.003 or overdrawn:
-                                hard.append("von Grafik/Bild verdeckt")
+                                hard.append(T("covered by a graphic/image", "von Grafik/Bild verdeckt"))
                         elif pres < 0.003 and size >= 6 and ink < 0.003:
-                            hard.append("abgeschnitten / nicht gerendert")
+                            hard.append(T("clipped / not rendered", "abgeschnitten / nicht gerendert"))
         # build text layer with geometry
         for c in span["chars"]:
             ch = chr(c[0]) if c[0] >= 0 else "�"
@@ -313,23 +315,24 @@ def _location_for(model: PdfDocModel, s: int, e: int, page_sizes) -> Location:
 
 
 _REASON_TITLES = [
-    ("Textfarbe entspricht", "Unsichtbarer Text: Schriftfarbe = Hintergrundfarbe (z. B. weiß auf weiß)"),
-    ("unsichtbarer Rendermodus", "Unsichtbarer Text (PDF-Rendermodus 3)"),
-    ("winzige Schrift", "Unsichtbarer Text: winzige Schriftgröße"),
-    ("zusammengestaucht", "Unsichtbarer Text: auf Nullbreite gestaucht"),
-    ("außerhalb", "Unsichtbarer Text außerhalb der Seite"),
-    ("verdeckt", "Verdeckter Text (unter Bild/Grafik)"),
-    ("abgeschnitten", "Unsichtbarer Text: abgeschnitten / nicht gerendert"),
-    ("Transparenz", "Unsichtbarer Text: vollständig transparent"),
-    ("ausgeblendeter PDF-Ebene", "Unsichtbarer Text auf ausgeblendeter PDF-Ebene"),
+    ("text colour matches", T("Invisible text: font colour = background colour (e.g. white on white)",
+                              "Unsichtbarer Text: Schriftfarbe = Hintergrundfarbe (z. B. weiß auf weiß)")),
+    ("invisible render mode", T("Invisible text (PDF render mode 3)", "Unsichtbarer Text (PDF-Rendermodus 3)")),
+    ("tiny font", T("Invisible text: tiny font size", "Unsichtbarer Text: winzige Schriftgröße")),
+    ("squashed", T("Invisible text: squashed to zero width", "Unsichtbarer Text: auf Nullbreite gestaucht")),
+    ("outside the visible", T("Invisible text outside the page", "Unsichtbarer Text außerhalb der Seite")),
+    ("covered by", T("Covered text (under an image/graphic)", "Verdeckter Text (unter Bild/Grafik)")),
+    ("clipped", T("Invisible text: clipped / not rendered", "Unsichtbarer Text: abgeschnitten / nicht gerendert")),
+    ("transparency", T("Invisible text: fully transparent", "Unsichtbarer Text: vollständig transparent")),
+    ("hidden PDF layer", T("Invisible text on a hidden PDF layer", "Unsichtbarer Text auf ausgeblendeter PDF-Ebene")),
 ]
 
 
 def _title_for(reasons) -> str:
     for key, title in _REASON_TITLES:
-        if any(key in r for r in reasons):
+        if any(key in str(r) for r in reasons):
             return title
-    return "Versteckter Text im PDF"
+    return T("Hidden text in the PDF", "Versteckter Text im PDF")
 
 
 def _hidden_findings(model: PdfDocModel, page_sizes) -> tuple:
@@ -356,14 +359,16 @@ def _hidden_findings(model: PdfDocModel, page_sizes) -> tuple:
             else:
                 base = 15.0 if words < 3 else 25.0
                 score = max(base, min(100.0, ps + 18)) if hits else base
-                title = "Kaum sichtbarer Text (hellgrau/sehr klein)"
+                title = T("Barely visible text (light grey/very small)", "Kaum sichtbarer Text (hellgrau/sehr klein)")
             loc = _location_for(model, s, e, page_sizes)
             findings.append(Finding(
                 category="hidden",
                 rule=f"pdf.hidden_{which}",
                 title=title,
-                description=("Für Menschen nicht sichtbar, für KI-Modelle normal lesbar. Gründe: " if which == "hard"
-                             else "Für Menschen schwer zu erkennen. Gründe: ") + "; ".join(reasons[:6]) + "." + _payload_note(hits),
+                description=(T("Not visible to humans, normally readable for AI models. Reasons: ",
+                                "Für Menschen nicht sichtbar, für KI-Modelle normal lesbar. Gründe: ") if which == "hard"
+                             else T("Hard to see for humans. Reasons: ", "Für Menschen schwer zu erkennen. Gründe: "))
+                + join("; ", reasons[:6]) + "." + _payload_note(hits),
                 score=score,
                 evidence=visible_repr(seg, 800),
                 decoded=seg[:4000],
@@ -394,23 +399,27 @@ def _xref_scan(doc) -> list:
                     try:
                         js_snippets.append(doc.xref_stream(int(m.group(1))).decode("latin-1", "replace")[:500])
                     except Exception:
-                        js_snippets.append("(JavaScript-Stream)")
+                        js_snippets.append("(JavaScript stream)")
                 elif "/S /JavaScript" in obj or "/S/JavaScript" in obj:
-                    js_snippets.append("(JavaScript-Aktion)")
+                    js_snippets.append("(JavaScript action)")
         if "/Launch" in obj:
             launch.append(xref)
     if js_snippets:
         ps, hits = payload_score(" ".join(js_snippets))
         findings.append(Finding(
-            category="active", rule="pdf.javascript", title="JavaScript im PDF",
-            description=f"{len(js_snippets)} JavaScript-Aktion(en). Skripte können Inhalte dynamisch verändern oder Daten senden."
+            category="active", rule="pdf.javascript", title=T("JavaScript in the PDF", "JavaScript im PDF"),
+            description=T(f"{len(js_snippets)} JavaScript action(s). Scripts can change content dynamically or send data.",
+                          f"{len(js_snippets)} JavaScript-Aktion(en). Skripte können Inhalte dynamisch verändern oder "
+                          "Daten senden.")
                         + _payload_note(hits),
             score=max(40.0, ps + 10), evidence=visible_repr("\n---\n".join(js_snippets), 800),
             location=Location(target="pdf_js"), default_remove=True))
     if launch:
         findings.append(Finding(
-            category="active", rule="pdf.launch", title="Launch-Aktion (startet Programme/Dateien)",
-            description="Das PDF enthält /Launch-Aktionen, die externe Programme oder Dateien öffnen können.",
+            category="active", rule="pdf.launch",
+            title=T("Launch action (starts programs/files)", "Launch-Aktion (startet Programme/Dateien)"),
+            description=T("The PDF contains /Launch actions that can open external programs or files.",
+                          "Das PDF enthält /Launch-Aktionen, die externe Programme oder Dateien öffnen können."),
             score=60.0, evidence=f"Objekte: {launch[:10]}", location=Location(target="pdf_js"), default_remove=True))
     return findings
 
@@ -442,9 +451,12 @@ def _annotation_findings(doc, page_sizes) -> list:
             rr = r * info_p["matrix"]
             findings.append(Finding(
                 category="hidden", rule="pdf.annotation",
-                title=f"Anweisung in PDF-Annotation ({a.type[1]})" if hits else f"Versteckte PDF-Annotation ({a.type[1]})",
-                description=("Kommentare/Notizen werden oft eingeklappt angezeigt, aber von Text-Extraktoren gelesen."
-                             + (" Die Annotation ist als versteckt markiert." if hidden else "") + _payload_note(hits)),
+                title=(T(f"Instruction in a PDF annotation ({a.type[1]})", f"Anweisung in PDF-Annotation ({a.type[1]})")
+                       if hits else T(f"Hidden PDF annotation ({a.type[1]})", f"Versteckte PDF-Annotation ({a.type[1]})")),
+                description=(T("Comments/notes are often shown collapsed, but text extractors read them.",
+                               "Kommentare/Notizen werden oft eingeklappt angezeigt, aber von Text-Extraktoren gelesen.")
+                             + (T(" The annotation is flagged as hidden.", " Die Annotation ist als versteckt markiert.")
+                                if hidden else "") + _payload_note(hits)),
                 score=score, evidence=visible_repr(txt, 600), decoded=txt,
                 location=Location(page=pno, line=pno + 1, xref=a.xref, target="pdf_annot",
                                   rects=[[pno, r.x0, r.y0, r.x1, r.y1]],
@@ -459,8 +471,10 @@ def _annotation_findings(doc, page_sizes) -> list:
             ps, hits = payload_score(txt)
             if hits:
                 findings.append(Finding(
-                    category="hidden", rule="pdf.form_field", title="Anweisung in PDF-Formularfeld",
-                    description="Formularfeld-Werte/Tooltips sind oft nicht sichtbar." + _payload_note(hits),
+                    category="hidden", rule="pdf.form_field",
+                    title=T("Instruction in a PDF form field", "Anweisung in PDF-Formularfeld"),
+                    description=T("Form field values/tooltips are often not visible.",
+                                  "Formularfeld-Werte/Tooltips sind oft nicht sichtbar.") + _payload_note(hits),
                     score=min(100.0, ps + 15), evidence=visible_repr(txt, 600), decoded=txt,
                     location=Location(page=pno, line=pno + 1, xref=w.xref, target="pdf_annot"), tags=["hidden"]))
         for li, link in enumerate(page.get_links()):
@@ -468,17 +482,20 @@ def _annotation_findings(doc, page_sizes) -> list:
             if not uri:
                 continue
             if re.match(r"\s*(javascript|vbscript):", uri, re.I):
-                score, why = 50.0, "Link führt JavaScript aus."
+                score, why = 50.0, T("The link executes JavaScript.", "Link führt JavaScript aus.")
             else:
                 ps, hits = payload_score(uri)
                 if re.search(r"\{|\}|%7b|\$\{", uri, re.I):
-                    score, why = 55.0, "Link-URL enthält Platzhalter (möglicher Datenabfluss)."
+                    score, why = 55.0, T("The link URL contains placeholders (possible data exfiltration).",
+                                         "Link-URL enthält Platzhalter (möglicher Datenabfluss).")
                 elif hits:
-                    score, why = min(100.0, ps + 10), "Link-URL enthält Injection-Text." + _payload_note(hits)
+                    score, why = min(100.0, ps + 10), T("The link URL contains injection text.",
+                                                         "Link-URL enthält Injection-Text.") + _payload_note(hits)
                 else:
                     continue
             findings.append(Finding(
-                category="exfil", rule="pdf.link", title="Verdächtiger Link im PDF", description=why, score=score,
+                category="exfil", rule="pdf.link", title=T("Suspicious link in the PDF", "Verdächtiger Link im PDF"),
+                description=why, score=score,
                 evidence=visible_repr(uri, 400), location=Location(page=pno, line=pno + 1, xref=li, target="pdf_link")))
     return findings
 
@@ -496,8 +513,10 @@ def _metadata_findings(doc) -> list:
     ps, hits = payload_score(full)
     if hits:
         findings.append(Finding(
-            category="hidden", rule="pdf.metadata", title="Anweisung in PDF-Metadaten",
-            description="Titel/Autor/Schlagwörter/XMP werden nicht im Dokument angezeigt, aber von manchen Tools an KI-Modelle übergeben."
+            category="hidden", rule="pdf.metadata", title=T("Instruction in PDF metadata", "Anweisung in PDF-Metadaten"),
+            description=T("Title/author/keywords/XMP are not shown in the document, but some tools pass them to AI models.",
+                          "Titel/Autor/Schlagwörter/XMP werden nicht im Dokument angezeigt, aber von manchen Tools an "
+                          "KI-Modelle übergeben.")
                         + _payload_note(hits),
             score=min(100.0, ps + 15), evidence=visible_repr(full.strip(), 800), decoded=full.strip()[:3000],
             location=Location(target="pdf_meta"), tags=["hidden"]))
@@ -522,8 +541,9 @@ def _embedded_findings(doc) -> list:
             pass
         ps, hits = payload_score(txt) if txt else (0.0, [])
         findings.append(Finding(
-            category="active", rule="pdf.embedded_file", title=f"Eingebettete Datei „{name}“",
-            description="Das PDF enthält eine angehängte Datei, die beim Lesen leicht übersehen wird." + _payload_note(hits),
+            category="active", rule="pdf.embedded_file", title=T(f"Embedded file “{name}”", f"Eingebettete Datei „{name}“"),
+            description=T("The PDF contains an attached file that is easily overlooked.",
+                          "Das PDF enthält eine angehängte Datei, die beim Lesen leicht übersehen wird.") + _payload_note(hits),
             score=min(100.0, ps + 15) if hits else 30.0, evidence=visible_repr(txt[:400]) if txt else f"{len(data)} Bytes",
             decoded=txt[:3000], location=Location(target="pdf_embedded"), tags=["hidden"]))
     return findings
@@ -534,7 +554,7 @@ def analyze_pdf(data: bytes):
     doc = pymupdf.open(stream=data, filetype="pdf")
     stats = {"pages": doc.page_count, "ocr_pages": [], "encrypted": bool(doc.needs_pass)}
     if doc.needs_pass and not doc.authenticate(""):
-        raise ValueError("PDF ist passwortgeschützt")
+        raise ValueError("PDF is password protected / PDF ist passwortgeschützt")
     model = PdfDocModel()
     page_sizes = []
     # Text on switched-off layers (Optional Content) is skipped by PyMuPDF's extraction but

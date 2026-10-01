@@ -4,6 +4,7 @@ from __future__ import annotations
 import codecs
 import os
 
+from .i18n import T, tr
 from .markup_analyzer import analyze_markup
 from .models import ScanResult
 from .text_analyzer import analyze_text
@@ -80,8 +81,8 @@ def absorb_into_hidden(findings: list, hosts=None) -> list:
                     if "injection" not in h.tags:
                         h.tags.append("injection")
                     h.default_remove = True
-                    if f.title not in h.description:
-                        h.description += " Erkannt: " + f.title + "."
+                    if str(f.title) not in str(h.description):
+                        h.description = tr(h.description) + T(" Detected: ", " Erkannt: ") + f.title + "."
                 continue
         out.append(f)
     return out
@@ -144,8 +145,10 @@ def scan_web_page(name: str, data: bytes, url: str, extra_css: str = "", source:
             key = (f.rule, (f.decoded or f.evidence)[:200])
             if key in seen or f.score < 20:
                 continue
-            f.title = "Nur im Seitenquelltext: " + f.title
-            f.description += " (Im Quelltext vorhanden, in der dargestellten Seite nicht – Scraper und KI-Tools lesen ihn trotzdem.)"
+            f.title = T("Only in page source: ", "Nur im Seitenquelltext: ") + f.title
+            f.description = tr(f.description) + T(
+                " (Present in the delivered source code but not in the displayed page – scrapers and AI tools still read it.)",
+                " (Im Quelltext vorhanden, in der dargestellten Seite nicht – Scraper und KI-Tools lesen ihn trotzdem.)")
             f.location.start = f.location.end = None
             f.location.ranges = []
             f.location.target = "source"

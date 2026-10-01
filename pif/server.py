@@ -266,7 +266,7 @@ class Handler(BaseHTTPRequestHandler):
                 f = STORE.get(payload.get("id"))
                 if not f:
                     return self._error("Datei unbekannt", 404)
-                cleaned = clean_document(f["name"], f["data"], f["result"], payload.get("ids"), web=f.get("web"))
+                cleaned = clean_document(f["name"], f["data"], f["result"], payload.get("ids"), web=f.get("web"), lang=payload.get("lang", "en"))
                 rescan = cleaned["rescan"]
                 return self._json({"text": cleaned["text"][:400_000], "removed": cleaned["removed"],
                                    "after": {"risk_score": rescan.risk_score, "verdict": rescan.verdict,
@@ -275,7 +275,7 @@ class Handler(BaseHTTPRequestHandler):
                 f = STORE.get(payload.get("id"))
                 if not f:
                     return self._error("Datei unbekannt", 404)
-                cleaned = clean_document(f["name"], f["data"], f["result"], payload.get("ids"), web=f.get("web"))
+                cleaned = clean_document(f["name"], f["data"], f["result"], payload.get("ids"), web=f.get("web"), lang=payload.get("lang", "en"))
                 body, fname = cleaned["data"], os.path.basename(f["name"])
                 if "markdown" in cleaned:
                     body, fname = cleaned["markdown"].encode("utf-8"), os.path.splitext(fname)[0] + ".md"
@@ -295,7 +295,7 @@ class Handler(BaseHTTPRequestHandler):
                     return self._send(200, _export_zip(items), "application/zip",
                                       {"Content-Disposition": 'attachment; filename="PromptInjectionFinder_Export.zip"'})
                 out_dir = os.path.expanduser((payload.get("out_dir") or "").strip().strip('"')) or default_export_dir()
-                info = export(items, out_dir)
+                info = export(items, out_dir, lang=payload.get("lang", "en"))
                 return self._json({"out_dir": info["out_dir"], "files": info["files"],
                                    "summary": [{"file": s["file"], "before": s["before"]["risk_score"],
                                                 "after": s["after"]["risk_score"],

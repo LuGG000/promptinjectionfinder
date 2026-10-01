@@ -6,7 +6,7 @@ scanner uses:
     off-screen, ...) is left out – that is where injections hide,
   * tabs / sub-pages that the user switches with a click are normal content,
   * content behind a click (solution, hint, <details>) is kept but marked as
-    "aufklappbar",
+    "collapsible",
   * form fields become "____", diagrams contribute their labels.
 """
 from __future__ import annotations
@@ -95,7 +95,26 @@ def _labels_by_id(page: str) -> dict:
     return out
 
 
-def extract_blocks(page: str, extra_css: str = "") -> list:
+_WORDS = {
+    "en": {"graphic": "Graphic", "image": "Image", "choice": "Choice", "collapsed": "collapsible (visible after a click)",
+           "tasks": "Detected tasks", "no_tasks": "No tasks detected.", "section": "Section", "found_by": "detected by",
+           "page_text": "Page text (in display order)", "source": "Source", "webpage": "Web page", "task": "Task",
+           "heading": "heading", "inputs": "input fields", "instruction": "work instruction", "question": "question",
+           "questions": "questions", "solution": "solution/hint"},
+    "de": {"graphic": "Grafik", "image": "Bild", "choice": "Auswahl", "collapsed": "aufklappbar (erst nach Klick sichtbar)",
+           "tasks": "Erkannte Aufgaben", "no_tasks": "Keine Aufgaben erkannt.", "section": "Abschnitt",
+           "found_by": "erkannt an", "page_text": "Seitentext (in Anzeige-Reihenfolge)", "source": "Quelle",
+           "webpage": "Webseite", "task": "Aufgabe", "heading": "Überschrift", "inputs": "Eingabefelder",
+           "instruction": "Arbeitsanweisung", "question": "Frage", "questions": "Fragen", "solution": "Lösung/Tipp"},
+}
+
+
+def _w(lang: str) -> dict:
+    return _WORDS["de" if lang == "de" else "en"]
+
+
+def extract_blocks(page: str, extra_css: str = "", lang: str = "en") -> list:
+    wd = _w(lang)
     page = re.sub(r"<![^-][^>]*>|<\?[^>]*\?>", "", page)  # doctype / processing instructions
     css, toggles = _css_rules(page, extra_css)
     labels = None
@@ -154,7 +173,7 @@ def extract_blocks(page: str, extra_css: str = "") -> list:
                     h2, c2, s2, _ = state()
                     if words and not h2 and not s2:
                         out.start("fig", c2)
-                        out.add("[Grafik: " + " · ".join(words) + "]", c2)
+                        out.add(f"[{wd['graphic']}: " + " · ".join(words) + "]", c2)
                         out.flush()
                 if el["tag"] in BLOCK:
                     out.flush()
@@ -205,7 +224,7 @@ def extract_blocks(page: str, extra_css: str = "") -> list:
                 elif typ not in ("hidden", "submit", "button", "reset", "image", "file", "range", "color"):
                     out.add(f" {attrs['value']} " if attrs.get("value") else " ____ ", collapsed)
             elif tag == "img" and attrs.get("alt", "").strip():
-                out.add(f" [Bild: {attrs['alt'].strip()}] ", collapsed)
+                out.add(f" [{wd['image']}: {attrs['alt'].strip()}] ", collapsed)
             continue
 
         entry = {"tag": tag, "hidden": el_hidden, "collapsed": el_collapsed, "skip": tag in SKIP,
@@ -261,7 +280,7 @@ def extract_blocks(page: str, extra_css: str = "") -> list:
             out.start("pre", collapsed)
         elif tag == "select":
             opts = re.findall(r"<option\b[^>]*>(.*?)</option>", page[pos:pos + 5000], re.S | re.I)
-            out.add(" [Auswahl: " + " / ".join(_html.unescape(re.sub(r"<[^>]+>", "", o)).strip() for o in opts[:8]) + "] ",
+            out.add(f" [{wd['choice']}: " + " / ".join(_html.unescape(re.sub(r"<[^>]+>", "", o)).strip() for o in opts[:8]) + "] ",
                     collapsed)
             endm = re.compile(r"</select\s*>", re.I).search(page, pos)
             pos = endm.end() if endm else n
@@ -296,11 +315,13 @@ _OPERATORS = (
 )
 _OPERATOR_START = re.compile(r"(?:^|[.!?:]\s+|\n)\s*(?:\(?\d+[.)]\s*|\(?[a-h]\)\s*|[-•]\s*)?(" + _OPERATORS + r")\b"
                              r"(?:\s+sie\b)?", re.I)
-_EXTRA_TITLES = re.compile(r"lösung|loesung|lösungsweg|tipp|hinweis|hilfe|solution|answer|hint|antwort", re.I)
+_EXTRA_TITLES = re.compile(r"lösung|loesung|lösungsweg|tipp|hinweis|hilfe|antwort|solution|answer|hint|tip|help", re.I)
 
 
-_TASK_LABEL = re.compile(r"^(aufgabe|teilaufgabe|übung|uebung|task|exercise|frage|nr\.?)\s*[\d.]+[a-z]?\s*:?$", re.I)
-_UI_NOISE = re.compile(r"^(offen|gelöst|erledigt|richtig|falsch|neu|open|done|solved|todo|\d+ von \d+ .*gelöst)$", re.I)
+_TASK_LABEL = re.compile(r"^(aufgabe|teilaufgabe|übung|uebung|frage|task|exercise|question|problem|q|nr\.?|no\.?)"
+                         r"\s*[\d.]+[a-z]?\s*:?$", re.I)
+_UI_NOISE = re.compile(r"^(offen|gelöst|erledigt|richtig|falsch|neu|open|done|solved|todo|correct|wrong|new|pending|"
+                       r"\d+ von \d+ .*gelöst|\d+ of \d+ .*(solved|done|completed))$", re.I)
 
 
 def _extra_label(block) -> str:
@@ -323,22 +344,22 @@ def detect_tasks(blocks: list) -> list:
         body_text = "\n".join(b.text for b in cur.body if not b.collapsed)
         sig = []
         if _TASK_TITLE.search(cur.title):
-            sig.append("Überschrift")
+            sig.append("heading")
         if ("____" in body_text or "☐" in body_text
                 or any(b.kind == "tr" and re.search(r"\|\s*(\||$)", b.text) for b in cur.body if not b.collapsed)):
-            sig.append("Eingabefelder")  # form fields or table cells left empty to be filled in
+            sig.append("inputs")  # form fields or table cells left empty to be filled in
         if _OPERATOR_START.search(body_text) or _OPERATOR_START.search(cur.title):
-            sig.append("Arbeitsanweisung")
+            sig.append("instruction")
         questions = len(re.findall(r"\?\s*(?:\n|$)", body_text))
         if questions >= 2:
-            sig.append("Fragen")
+            sig.append("questions")
         elif questions:
-            sig.append("Frage")
+            sig.append("question")
         if any(_EXTRA_TITLES.search(x) for x in cur.extras):
-            sig.append("Lösung/Tipp")
-        weight = sum({"Überschrift": 2, "Eingabefelder": 2, "Arbeitsanweisung": 1, "Frage": 1, "Fragen": 2,
-                      "Lösung/Tipp": 1}[s] for s in sig)
-        if cur.level <= top_level and "Eingabefelder" not in sig:
+            sig.append("solution")
+        weight = sum({"heading": 2, "inputs": 2, "instruction": 1, "question": 1, "questions": 2,
+                      "solution": 1}[s] for s in sig)
+        if cur.level <= top_level and "inputs" not in sig:
             weight = 0  # page title / chapter intro, not an exercise
         if weight >= 2 and body_text.strip():
             cur.signals = sig
@@ -380,7 +401,7 @@ def detect_tasks(blocks: list) -> list:
         for b in blocks:
             if b.kind in ("p", "li") and not b.collapsed and _OPERATOR_START.search(b.text) and len(b.text) > 25:
                 t = Task("", [], body=[b])
-                t.signals = ["Arbeitsanweisung"]
+                t.signals = ["instruction"]
                 tasks.append(t)
     return tasks
 
@@ -389,14 +410,14 @@ def detect_tasks(blocks: list) -> list:
 # Markdown
 # ---------------------------------------------------------------------------
 
-def blocks_to_markdown(blocks: list, heading_offset: int = 1) -> str:
+def blocks_to_markdown(blocks: list, heading_offset: int = 1, lang: str = "en") -> str:
     lines = []
     prev_collapsed = False
     prev_kind = None
     for b in blocks:
         if b.collapsed and not prev_collapsed:
             lines.append("")
-            lines.append("> ▸ *aufklappbar (erst nach Klick sichtbar)*")
+            lines.append(f"> ▸ *{_w(lang)['collapsed']}*")
         if not b.collapsed and prev_collapsed:
             lines.append("")
         q = "> " if b.collapsed else ""
@@ -425,42 +446,44 @@ def blocks_to_markdown(blocks: list, heading_offset: int = 1) -> str:
     return re.sub(r"\n{3,}", "\n\n", md).strip() + "\n"
 
 
-def tasks_to_markdown(tasks: list, heading: str = "##") -> str:
+def tasks_to_markdown(tasks: list, heading: str = "##", lang: str = "en") -> str:
+    w = _w(lang)
     if not tasks:
-        return f"{heading} Erkannte Aufgaben\n\n*Keine Aufgaben erkannt.*\n"
-    parts = [f"{heading} Erkannte Aufgaben ({len(tasks)})\n"]
+        return f"{heading} {w['tasks']}\n\n*{w['no_tasks']}*\n"
+    parts = [f"{heading} {w['tasks']} ({len(tasks)})\n"]
     for i, t in enumerate(tasks, 1):
-        title = t.title or "Aufgabe"
+        title = t.title or w["task"]
         parts.append(f"{heading}# {i}. {title}")
         meta = []
         if t.context:
-            meta.append("Abschnitt: " + " › ".join(t.context))
-        meta.append("erkannt an: " + ", ".join(t.signals))
+            meta.append(f"{w['section']}: " + " › ".join(t.context))
+        meta.append(f"{w['found_by']}: " + ", ".join(w.get(sg, sg) for sg in t.signals))
         parts.append("*" + " · ".join(meta) + "*\n")
-        parts.append(blocks_to_markdown(t.body, heading_offset=3).strip())
+        parts.append(blocks_to_markdown(t.body, heading_offset=3, lang=lang).strip())
         parts.append("")
     return "\n".join(parts).strip() + "\n"
 
 
-def page_title(page: str, blocks: list) -> str:
+def page_title(page: str, blocks: list, lang: str = "en") -> str:
     m = re.search(r"<title[^>]*>(.*?)</title>", page, re.S | re.I)
     if m and m.group(1).strip():
         return re.sub(r"\s+", " ", _html.unescape(m.group(1))).strip()
     h = next((b.text for b in blocks if b.kind == "h"), "")
-    return h or "Webseite"
+    return h or _w(lang)["webpage"]
 
 
-def web_markdown(page: str, url: str = "", extra_css: str = "", note: str = "") -> tuple:
+def web_markdown(page: str, url: str = "", extra_css: str = "", note: str = "", lang: str = "en") -> tuple:
     """Return (markdown, tasks) for one HTML page."""
-    blocks = extract_blocks(page, extra_css)
+    w = _w(lang)
+    blocks = extract_blocks(page, extra_css, lang)
     tasks = detect_tasks(blocks)
-    title = page_title(page, blocks)
+    title = page_title(page, blocks, lang)
     head = [f"# {title}", ""]
     if url:
-        head.append(f"Quelle: <{url}>  ")
+        head.append(f"{w['source']}: <{url}>  ")
     if note:
         head.append(note + "  ")
     head.append("")
-    md = "\n".join(head) + "\n" + tasks_to_markdown(tasks) + "\n---\n\n## Seitentext (in Anzeige-Reihenfolge)\n\n" + \
-        blocks_to_markdown(blocks, heading_offset=2)
+    md = "\n".join(head) + "\n" + tasks_to_markdown(tasks, lang=lang) + f"\n---\n\n## {w['page_text']}\n\n" + \
+        blocks_to_markdown(blocks, heading_offset=2, lang=lang)
     return md, tasks

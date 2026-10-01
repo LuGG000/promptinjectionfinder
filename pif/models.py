@@ -5,6 +5,8 @@ import itertools
 from dataclasses import dataclass, field, asdict
 from typing import Optional
 
+from .i18n import LANGS, text
+
 SEVERITIES = ["info", "low", "medium", "high", "critical"]
 
 _ids = itertools.count(1)
@@ -48,8 +50,8 @@ class Location:
 class Finding:
     category: str
     rule: str
-    title: str
-    description: str
+    title: object        # str or i18n.T (English + German)
+    description: object  # str or i18n.T
     score: float
     evidence: str = ""
     decoded: str = ""
@@ -74,9 +76,13 @@ class Finding:
     def severity(self) -> str:
         return severity_for(self.score)
 
-    def to_dict(self) -> dict:
+    def to_dict(self, lang: str = "en") -> dict:
+        """JSON-ready dict. ``title``/``description`` are in ``lang``; ``i18n`` holds both languages."""
         d = asdict(self)
         d["severity"] = self.severity
+        d["title"] = text(self.title, lang)
+        d["description"] = text(self.description, lang)
+        d["i18n"] = {lg: {"title": text(self.title, lg), "description": text(self.description, lg)} for lg in LANGS}
         return d
 
 
@@ -118,7 +124,7 @@ class ScanResult:
             return "suspicious"
         return "clean"
 
-    def to_dict(self) -> dict:
+    def to_dict(self, lang: str = "en") -> dict:
         return {
             "path": self.path,
             "name": self.name,
@@ -126,7 +132,7 @@ class ScanResult:
             "risk_score": self.risk_score,
             "severity": severity_for(self.risk_score),
             "verdict": self.verdict,
-            "findings": [f.to_dict() for f in sorted(self.findings, key=lambda f: -f.score)],
+            "findings": [f.to_dict(lang) for f in sorted(self.findings, key=lambda f: -f.score)],
             "text_preview": self.text_preview,
             "stats": self.stats,
             "error": self.error,

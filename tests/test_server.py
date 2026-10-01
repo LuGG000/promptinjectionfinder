@@ -76,7 +76,7 @@ def test_full_flow(base, tmp_path):
     out = tmp_path / "export"
     st, body, _ = call(base, "/api/export", {"out_dir": str(out), "items": [{"id": res["file_id"], "ids": ids}]})
     assert st == 200
-    assert (out / "bereinigt" / "angriff_rezept.md").exists()
+    assert (out / "cleaned" / "angriff_rezept.md").exists()
     assert (out / "report.html").exists()
 
 
@@ -103,4 +103,4 @@ def test_export_zip(base):
     assert st == 200 and hdr.get("Content-Type") == "application/zip"
     names = zipfile.ZipFile(io.BytesIO(body)).namelist()
     assert "PromptInjectionFinder_Export/report.html" in names
-    assert "PromptInjectionFinder_Export/bereinigt/angriff_meeting.txt" in names
+    assert "PromptInjectionFinder_Export/cleaned/angriff_meeting.txt" in names

@@ -19,21 +19,30 @@ import re
 import unicodedata
 import urllib.parse
 
+from .i18n import T, join
 from .models import Finding, Location
 from .patterns import CATEGORY_TITLES, combine, find_hits, payload_score, transformed_hits
 from . import unicode_tools as U
 
 CATEGORY_DESCRIPTIONS = {
-    "override": "Versucht, vorherige/System-Anweisungen eines KI-Modells außer Kraft zu setzen.",
-    "role": "Versucht, dem KI-Modell eine neue Rolle oder einen Modus aufzuzwingen.",
-    "prompt_leak": "Fordert das Modell auf, seinen Systemprompt oder interne Anweisungen preiszugeben.",
-    "delimiter": "Enthält gefälschte Chat-/Rollenmarker, um eine System- oder Assistenten-Nachricht vorzutäuschen.",
-    "ai_address": "Spricht ein KI-System direkt an – typisch für versteckte Anweisungen in Dokumenten.",
-    "conceal": "Fordert, Aktionen vor dem Menschen zu verbergen.",
-    "exfil": "Versucht, Daten an externe Ziele zu senden oder Geheimnisse abzugreifen.",
-    "tool": "Versucht, Befehle oder Werkzeugaufrufe auszulösen.",
-    "jailbreak": "Typische Jailbreak-Formulierung zum Aushebeln von Schutzmaßnahmen.",
-    "manipulation": "Versucht, Bewertungen, Klassifikationen oder Ausgaben zu manipulieren.",
+    "override": T("Tries to override previous/system instructions of an AI model.",
+                  "Versucht, vorherige/System-Anweisungen eines KI-Modells außer Kraft zu setzen."),
+    "role": T("Tries to force a new role or mode onto the AI model.",
+              "Versucht, dem KI-Modell eine neue Rolle oder einen Modus aufzuzwingen."),
+    "prompt_leak": T("Asks the model to reveal its system prompt or internal instructions.",
+                     "Fordert das Modell auf, seinen Systemprompt oder interne Anweisungen preiszugeben."),
+    "delimiter": T("Contains fake chat/role markers to impersonate a system or assistant message.",
+                   "Enthält gefälschte Chat-/Rollenmarker, um eine System- oder Assistenten-Nachricht vorzutäuschen."),
+    "ai_address": T("Addresses an AI system directly – typical for hidden instructions in documents.",
+                    "Spricht ein KI-System direkt an – typisch für versteckte Anweisungen in Dokumenten."),
+    "conceal": T("Asks to hide actions from the human.", "Fordert, Aktionen vor dem Menschen zu verbergen."),
+    "exfil": T("Tries to send data to external targets or to obtain secrets.",
+               "Versucht, Daten an externe Ziele zu senden oder Geheimnisse abzugreifen."),
+    "tool": T("Tries to trigger commands or tool calls.", "Versucht, Befehle oder Werkzeugaufrufe auszulösen."),
+    "jailbreak": T("Typical jailbreak wording to defeat safety measures.",
+                   "Typische Jailbreak-Formulierung zum Aushebeln von Schutzmaßnahmen."),
+    "manipulation": T("Tries to manipulate ratings, classifications or outputs.",
+                      "Versucht, Bewertungen, Klassifikationen oder Ausgaben zu manipulieren."),
 }
 
 _TERMINATORS = ".!?\n。！？"
@@ -87,11 +96,13 @@ def expand_to_sentence(text: str, start: int, end: int, limit: int = 400) -> tup
     return s, e
 
 
-def _payload_note(hits) -> str:
+def _payload_note(hits):
     if not hits:
         return ""
-    names = sorted({CATEGORY_TITLES[h.rule.category] for h in hits})
-    return " Der verborgene Inhalt enthält Injection-Muster: " + ", ".join(names) + "."
+    cats = sorted({h.rule.category for h in hits})
+    names = join(", ", [CATEGORY_TITLES[c] for c in cats])
+    return T(" The hidden content contains injection patterns: ", " Der verborgene Inhalt enthält Injection-Muster: ") \
+        + names + "."
 
 
 # ---------------------------------------------------------------------------
@@ -139,13 +150,13 @@ def pattern_findings(text: str, hidden_context: bool = False, min_score: float =
         title = CATEGORY_TITLES[cats[0]]
         desc = CATEGORY_DESCRIPTIONS[cats[0]]
         if len(cats) > 1:
-            desc += " Weitere Signale: " + ", ".join(CATEGORY_TITLES[c] for c in cats[1:]) + "."
-        matched = "; ".join(sorted({f"„{h.matched.strip()[:60]}“" for h in cl}))
-        desc += " Treffer: " + matched
+            desc += T(" Further signals: ", " Weitere Signale: ") + join(", ", [CATEGORY_TITLES[c] for c in cats[1:]]) + "."
+        matched = "; ".join(sorted({f"“{h.matched.strip()[:60]}”" for h in cl}))
+        desc += T(" Matches: ", " Treffer: ") + matched
         findings.append(Finding(
             category="injection",
             rule=",".join(sorted(best)),
-            title=f"Prompt Injection: {title}",
+            title="Prompt injection: " + title,
             description=desc,
             score=score,
             evidence=visible_repr(text[s:e]),
@@ -212,9 +223,12 @@ def unicode_findings(text: str) -> list:
         findings.append(Finding(
             category="unicode",
             rule="unicode.tags",
-            title="ASCII-Smuggling über unsichtbare Unicode-Tag-Zeichen",
-            description=f"{e - s} unsichtbare Tag-Zeichen (U+E0000–E007F) kodieren versteckten ASCII-Text, "
-                        "den Menschen nicht sehen, KI-Modelle aber lesen." + _payload_note(hits),
+            title=T("ASCII smuggling via invisible Unicode tag characters",
+                    "ASCII-Smuggling über unsichtbare Unicode-Tag-Zeichen"),
+            description=T(f"{e - s} invisible tag characters (U+E0000–E007F) encode hidden ASCII text that humans "
+                          "cannot see but AI models read.",
+                          f"{e - s} unsichtbare Tag-Zeichen (U+E0000–E007F) kodieren versteckten ASCII-Text, "
+                          "den Menschen nicht sehen, KI-Modelle aber lesen.") + _payload_note(hits),
             score=score,
             evidence=context(text, s, e),
             decoded=decoded,
@@ -233,13 +247,17 @@ def unicode_findings(text: str) -> list:
         readable = U.printable_ratio(decoded) > 0.8 and len(decoded.strip()) >= 2
         if readable:
             score = max(72.0, min(100.0, ps + 20))
-            title = "Versteckte Nachricht in Emoji (Variation-Selector-Smuggling)"
-            desc = (f"An das Zeichen „{base}“ sind {length} unsichtbare Variation Selectors angehängt. "
-                    "Jeder Selector kodiert ein Byte – zusammen ergeben sie versteckten Text." + _payload_note(hits))
+            title = T("Hidden message in an emoji (variation selector smuggling)",
+                      "Versteckte Nachricht in Emoji (Variation-Selector-Smuggling)")
+            desc = T(f"{length} invisible variation selectors are attached to “{base}”. "
+                     "Each selector encodes one byte – together they form hidden text.",
+                     f"An das Zeichen „{base}“ sind {length} unsichtbare Variation Selectors angehängt. "
+                     "Jeder Selector kodiert ein Byte – zusammen ergeben sie versteckten Text.") + _payload_note(hits)
         else:
             score = 40.0
-            title = "Ungewöhnliche Häufung von Variation Selectors"
-            desc = f"{length} aufeinanderfolgende Variation Selectors nach „{base}“ – möglicher versteckter Datenkanal."
+            title = T("Unusual run of variation selectors", "Ungewöhnliche Häufung von Variation Selectors")
+            desc = T(f"{length} consecutive variation selectors after “{base}” – possible hidden data channel.",
+                     f"{length} aufeinanderfolgende Variation Selectors nach „{base}“ – möglicher versteckter Datenkanal.")
         rs = s
         if text[s] in "︎️" and base and U.is_emoji_like(ord(base)):
             rs = s + 1  # keep the normal emoji presentation selector
@@ -306,8 +324,11 @@ def unicode_findings(text: str) -> list:
                     findings.append(Finding(
                         category="unicode",
                         rule="unicode.zw_stego",
-                        title="Zero-Width-Steganografie (versteckte Binärnachricht)",
-                        description=f"{e - s} unsichtbare Zeichen kodieren als Bitfolge eine versteckte Nachricht." + _payload_note(hits),
+                        title=T("Zero-width steganography (hidden binary message)",
+                                "Zero-Width-Steganografie (versteckte Binärnachricht)"),
+                        description=T(f"{e - s} invisible characters encode a hidden message as a bit sequence.",
+                                      f"{e - s} unsichtbare Zeichen kodieren als Bitfolge eine versteckte Nachricht.")
+                        + _payload_note(hits),
                         score=max(75.0, min(100.0, ps + 20)),
                         evidence=context(text, s, e),
                         decoded=decoded,
@@ -323,14 +344,16 @@ def unicode_findings(text: str) -> list:
             if splits:
                 score += 15
             names = sorted({U.char_name(ord(text[s])) for s, _ in rest})
-            desc = (f"{count} unsichtbare Zeichen gefunden ({', '.join(names[:5])}). ")
+            desc = T(f"{count} invisible characters found ({', '.join(names[:5])}). ",
+                     f"{count} unsichtbare Zeichen gefunden ({', '.join(names[:5])}). ")
             if splits:
-                desc += f"{splits}× wird ein Wort zerteilt – typische Technik, um Filter zu umgehen."
+                desc += T(f"{splits}× a word is split – a typical technique to evade filters.",
+                          f"{splits}× wird ein Wort zerteilt – typische Technik, um Filter zu umgehen.")
             s0 = rest[0][0]
             findings.append(Finding(
                 category="unicode",
                 rule="unicode.zero_width",
-                title="Unsichtbare Zero-Width-Zeichen",
+                title=T("Invisible zero-width characters", "Unsichtbare Zero-Width-Zeichen"),
                 description=desc,
                 score=score,
                 evidence=context(text, s0, rest[0][1]),
@@ -343,9 +366,11 @@ def unicode_findings(text: str) -> list:
         findings.append(Finding(
             category="unicode",
             rule="unicode.soft_hyphen",
-            title="Weiche Trennstriche (U+00AD)",
-            description=f"{len(soft)} weiche Trennstriche, {inside} davon mitten in Wörtern. Meist harmlos (Webseiten-Kopie), "
-                        "können aber Wortfilter umgehen.",
+            title=T("Soft hyphens (U+00AD)", "Weiche Trennstriche (U+00AD)"),
+            description=T(f"{len(soft)} soft hyphens, {inside} of them inside words. Usually harmless (copied from a web "
+                          "page), but they can evade word filters.",
+                          f"{len(soft)} weiche Trennstriche, {inside} davon mitten in Wörtern. Meist harmlos "
+                          "(Webseiten-Kopie), können aber Wortfilter umgehen."),
             score=12.0 if len(soft) < 20 else 18.0,
             evidence=context(text, soft[0], soft[0] + 1),
             location=Location(start=soft[0], end=soft[-1] + 1, line=line_of(text, soft[0]),
@@ -371,10 +396,15 @@ def unicode_findings(text: str) -> list:
             findings.append(Finding(
                 category="unicode",
                 rule="unicode.bidi",
-                title="Bidi-Steuerzeichen (Textrichtungs-Manipulation)",
-                description=f"{len(bidi)} Steuerzeichen für die Schreibrichtung"
-                            + (f", davon {len(overrides)} Overrides" if overrides else "")
-                            + ". Damit kann die angezeigte Reihenfolge vom tatsächlich gelesenen Text abweichen (Trojan-Source).",
+                title=T("Bidi control characters (text direction manipulation)",
+                        "Bidi-Steuerzeichen (Textrichtungs-Manipulation)"),
+                description=T(f"{len(bidi)} text direction control characters"
+                              + (f", {len(overrides)} of them overrides" if overrides else "")
+                              + ". The displayed order can differ from the text that is actually read (Trojan Source).",
+                              f"{len(bidi)} Steuerzeichen für die Schreibrichtung"
+                              + (f", davon {len(overrides)} Overrides" if overrides else "")
+                              + ". Damit kann die angezeigte Reihenfolge vom tatsächlich gelesenen Text abweichen "
+                                "(Trojan-Source)."),
                 score=score,
                 evidence=context(text, bidi[0], bidi[0] + 1),
                 location=Location(start=bidi[0], end=bidi[-1] + 1, line=line_of(text, bidi[0]),
@@ -388,8 +418,9 @@ def unicode_findings(text: str) -> list:
         findings.append(Finding(
             category="unicode",
             rule="unicode.private_use",
-            title="Zeichen aus dem Private-Use-Bereich",
-            description=f"{len(pua)} Zeichen ohne standardisierte Bedeutung – können versteckte Daten tragen.",
+            title=T("Private use area characters", "Zeichen aus dem Private-Use-Bereich"),
+            description=T(f"{len(pua)} characters without a standardized meaning – they can carry hidden data.",
+                          f"{len(pua)} Zeichen ohne standardisierte Bedeutung – können versteckte Daten tragen."),
             score=15.0 if len(pua) < 50 else 20.0,
             evidence=context(text, pua[0], pua[0] + 1),
             location=Location(start=pua[0], end=pua[-1] + 1, line=line_of(text, pua[0]),
@@ -411,8 +442,9 @@ def _control_findings(text: str) -> list:
         findings.append(Finding(
             category="unicode",
             rule="unicode.control",
-            title="Nicht druckbare Steuerzeichen",
-            description=f"{len(ctrl)} Steuerzeichen (C0/C1), die in normalem Text nicht vorkommen.",
+            title=T("Non-printable control characters", "Nicht druckbare Steuerzeichen"),
+            description=T(f"{len(ctrl)} control characters (C0/C1) that do not occur in normal text.",
+                          f"{len(ctrl)} Steuerzeichen (C0/C1), die in normalem Text nicht vorkommen."),
             score=30.0 if len(ctrl) > 2 else 18.0,
             evidence=context(text, ctrl[0], ctrl[0] + 1),
             location=Location(start=ctrl[0], end=ctrl[-1] + 1, line=line_of(text, ctrl[0]),
@@ -463,9 +495,12 @@ def _homoglyph_findings(text: str) -> list:
     return [Finding(
         category="unicode",
         rule="unicode.homoglyph",
-        title="Homoglyphen – getarnte Buchstaben aus anderen Schriftsystemen",
-        description=f"{len(words)} Wort/Wörter mischen lateinische mit kyrillischen/griechischen Doppelgänger-Buchstaben "
-                    f"(z. B. „{words[0]}“). So werden Filter umgangen, während der Text für Menschen normal aussieht.",
+        title=T("Homoglyphs – look-alike letters from other scripts",
+                "Homoglyphen – getarnte Buchstaben aus anderen Schriftsystemen"),
+        description=T(f"{len(words)} word(s) mix Latin letters with Cyrillic/Greek look-alikes (e.g. “{words[0]}”). "
+                      "This evades filters while the text looks normal to humans.",
+                      f"{len(words)} Wort/Wörter mischen lateinische mit kyrillischen/griechischen Doppelgänger-Buchstaben "
+                      f"(z. B. „{words[0]}“). So werden Filter umgangen, während der Text für Menschen normal aussieht."),
         score=score,
         evidence=context(text, first, first + len(words[0])),
         decoded=", ".join("".join(U.CONFUSABLES.get(ord(c), c) for c in w) for w in words[:10]),
@@ -508,9 +543,12 @@ def _styled_letter_findings(text: str) -> list:
             findings.append(Finding(
                 category="unicode",
                 rule="unicode.styled_letters",
-                title="Text aus Emoji-/Sonderzeichen-Buchstaben",
-                description=f"{count} Zeichen sind stilisierte Buchstaben (Emoji-Buchstaben, Regional-Indicator, "
-                            "mathematische oder Vollbreiten-Zeichen), die KI-Modelle als normalen Text lesen." + _payload_note(hits),
+                title=T("Text written with emoji/special letters", "Text aus Emoji-/Sonderzeichen-Buchstaben"),
+                description=T(f"{count} characters are styled letters (emoji letters, regional indicators, "
+                              "mathematical or full-width characters) that AI models read as normal text.",
+                              f"{count} Zeichen sind stilisierte Buchstaben (Emoji-Buchstaben, Regional-Indicator, "
+                              "mathematische oder Vollbreiten-Zeichen), die KI-Modelle als normalen Text lesen.")
+                + _payload_note(hits),
                 score=max(20.0, min(100.0, ps + 15)) if hits else 20.0,
                 evidence=visible_repr(text[i:j]),
                 decoded=folded,
@@ -537,8 +575,9 @@ def _terminal_findings(text: str) -> list:
             findings.append(Finding(
                 category="hidden",
                 rule="ansi.conceal",
-                title="Per ANSI-Code verborgener Text (Conceal)",
-                description="Der ANSI-Code ESC[8m macht Text im Terminal unsichtbar." + _payload_note(hits),
+                title=T("Text hidden by an ANSI code (conceal)", "Per ANSI-Code verborgener Text (Conceal)"),
+                description=T("The ANSI code ESC[8m makes text invisible in a terminal.",
+                              "Der ANSI-Code ESC[8m macht Text im Terminal unsichtbar.") + _payload_note(hits),
                 score=max(60.0, min(100.0, ps + 20)),
                 evidence=visible_repr(m.group(0)),
                 decoded=hidden,
@@ -551,10 +590,13 @@ def _terminal_findings(text: str) -> list:
             findings.append(Finding(
                 category="unicode",
                 rule="ansi.escape",
-                title="ANSI-Escape-Sequenzen",
-                description=f"{len(seqs)} Terminal-Steuersequenzen"
-                            + (f", davon {len(cursor)} Cursor-/Löschbefehle, mit denen Text im Terminal überschrieben werden kann" if cursor else "")
-                            + ".",
+                title=T("ANSI escape sequences", "ANSI-Escape-Sequenzen"),
+                description=T(f"{len(seqs)} terminal control sequences"
+                              + (f", {len(cursor)} of them cursor/erase commands that can overwrite text in a terminal"
+                                 if cursor else "") + ".",
+                              f"{len(seqs)} Terminal-Steuersequenzen"
+                              + (f", davon {len(cursor)} Cursor-/Löschbefehle, mit denen Text im Terminal überschrieben "
+                                 "werden kann" if cursor else "") + "."),
                 score=40.0 if cursor else 25.0,
                 evidence=visible_repr(seqs[0].group(0)),
                 location=Location(start=seqs[0].start(), end=seqs[-1].end(), line=line_of(text, seqs[0].start()),
@@ -566,9 +608,11 @@ def _terminal_findings(text: str) -> list:
         findings.append(Finding(
             category="hidden",
             rule="layout.carriage_return",
-            title="Überschriebener Text (Wagenrücklauf)",
-            description="Ein einzelnes CR (\\r) lässt nachfolgenden Text den vorherigen in Terminals überschreiben – "
-                        "der vordere Teil ist für Menschen unsichtbar." + _payload_note(hits),
+            title=T("Overwritten text (carriage return)", "Überschriebener Text (Wagenrücklauf)"),
+            description=T("A lone CR (\\r) makes the following text overwrite the previous one in terminals – "
+                          "the first part is invisible to humans.",
+                          "Ein einzelnes CR (\\r) lässt nachfolgenden Text den vorherigen in Terminals überschreiben – "
+                          "der vordere Teil ist für Menschen unsichtbar.") + _payload_note(hits),
             score=max(35.0, min(100.0, ps + 20)) if hits else 35.0,
             evidence=visible_repr(m.group(0).replace("\r", "⟦CR⟧")),
             decoded=hidden,
@@ -610,18 +654,19 @@ def _encoded_finding(text, s, e, decoded, kind, label):
     words = len(decoded.split())
     if hits:
         score = min(100.0, max(55.0, ps + 15))
-        title = f"{label}-kodierte Anweisung"
+        title = T(f"{label}-encoded instruction", f"{label}-kodierte Anweisung")
     elif words >= 4:
         score = 12.0
-        title = f"{label}-kodierter Klartext"
+        title = T(f"{label}-encoded plain text", f"{label}-kodierter Klartext")
     else:
         return None
     return Finding(
         category="encoding",
         rule=f"encoding.{kind}",
         title=title,
-        description=f"Eine {label}-Zeichenkette enthält lesbaren Text, den ein KI-Modell dekodieren und befolgen könnte."
-                    + _payload_note(hits),
+        description=T(f"A {label} string contains readable text that an AI model could decode and follow.",
+                      f"Eine {label}-Zeichenkette enthält lesbaren Text, den ein KI-Modell dekodieren und befolgen könnte.")
+        + _payload_note(hits),
         score=score,
         evidence=visible_repr(text[s:e][:200]),
         decoded=decoded[:2000],
@@ -692,14 +737,14 @@ def encoded_findings(text: str) -> list:
         except (ValueError, UnicodeDecodeError):
             continue
         if _texty(dec):
-            f = _encoded_finding(text, m.start(), m.end(), dec, "binary", "Binär")
+            f = _encoded_finding(text, m.start(), m.end(), dec, "binary", "Binary")
             if f:
                 findings.append(f)
 
     # ROT13 and reversed text: only strong rules count to keep false positives low.
     for label, kind, transform, mapper in (
         ("ROT13", "rot13", lambda t: codecs.encode(t, "rot13"), lambda s, e, n: (s, e)),
-        ("Rückwärts geschrieben", "reversed", lambda t: t[::-1], lambda s, e, n: (n - e, n - s)),
+        (T("reversed", "rückwärts"), "reversed", lambda t: t[::-1], lambda s, e, n: (n - e, n - s)),
     ):
         strong = transformed_hits(text, transform)
         plain = {(h.rule.id, h.start, h.end) for h in find_hits(text)} if strong else set()
@@ -712,8 +757,10 @@ def encoded_findings(text: str) -> list:
             findings.append(Finding(
                 category="encoding",
                 rule=f"encoding.{kind}",
-                title=f"Verschleierte Anweisung ({label})",
-                description=f"Nach {label}-Dekodierung ergibt sich eine Injection-Anweisung ({CATEGORY_TITLES[h.rule.category]}).",
+                title=T("Obfuscated instruction (", "Verschleierte Anweisung (") + label + ")",
+                description=T("Decoding (", "Nach Dekodierung (") + label
+                + T(") reveals an injection instruction (", ") ergibt sich eine Injection-Anweisung (")
+                + CATEGORY_TITLES[h.rule.category] + ").",
                 score=min(100.0, h.rule.weight + 10),
                 evidence=visible_repr(text[s:e]),
                 decoded=seg,
@@ -743,9 +790,10 @@ def layout_findings(text: str) -> list:
         findings.append(Finding(
             category="hidden",
             rule="layout.far_right",
-            title="Weit nach rechts verschobener Text",
-            description=f"Text steht hinter {len(m.group(0)) - len(hidden)} Leerzeichen und ist in vielen Editoren/Ansichten "
-                        "nicht sichtbar." + _payload_note(hits),
+            title=T("Text pushed far to the right", "Weit nach rechts verschobener Text"),
+            description=T(f"Text follows {len(m.group(0)) - len(hidden)} spaces and is not visible in many editors/views.",
+                          f"Text steht hinter {len(m.group(0)) - len(hidden)} Leerzeichen und ist in vielen "
+                          "Editoren/Ansichten nicht sichtbar.") + _payload_note(hits),
             score=min(100.0, ps + 25) if hits else 30.0,
             evidence=visible_repr(hidden),
             decoded=hidden,
@@ -763,9 +811,10 @@ def layout_findings(text: str) -> list:
         findings.append(Finding(
             category="hidden",
             rule="layout.blank_gap",
-            title="Text nach vielen Leerzeilen",
-            description=f"Nach {m.group(0).count(chr(10))} Leerzeilen folgt weiterer Text, der beim Lesen leicht übersehen wird."
-                        + _payload_note(hits),
+            title=T("Text after many blank lines", "Text nach vielen Leerzeilen"),
+            description=T(f"After {m.group(0).count(chr(10))} blank lines more text follows that is easily overlooked.",
+                          f"Nach {m.group(0).count(chr(10))} Leerzeilen folgt weiterer Text, der beim Lesen leicht "
+                          "übersehen wird.") + _payload_note(hits),
             score=min(100.0, ps + 20) if hits else 18.0,
             evidence=visible_repr(hidden[:300]),
             location=Location(start=tail_start, end=tail_end, line=line_of(text, tail_start)),

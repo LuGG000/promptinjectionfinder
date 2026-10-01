@@ -47,7 +47,7 @@ def _md():
 
 def test_text_in_display_order_without_hidden_injection():
     md, _ = _md()
-    text = md.split("## Seitentext", 1)[1]
+    text = md.split("## Page text", 1)[1]
     assert INJ not in md                                   # off-screen injection is not part of the text
     order = ["Übungen", "Bearbeite alle Aufgaben", "Schaltungen", "Reihenschaltung", "Berechne den Gesamtwiderstand",
              "Gatter", "Wahrheitstabelle", "Vervollständige", "Kontakt", "Fragen an die Lehrkraft"]
@@ -61,14 +61,14 @@ def test_text_in_display_order_without_hidden_injection():
 def test_inputs_graphics_tables_and_chips():
     md, _ = _md()
     assert "R = ____ Ω" in md
-    assert "[Grafik: R1 · 100 Ω · U = 5 V]" in md
+    assert "[Graphic: R1 · 100 Ω · U = 5 V]" in md
     assert "| A | B | Q |" in md
     assert "A = 0 B = 1" in md
 
 
 def test_collapsed_parts_are_marked():
     md, _ = _md()
-    assert "aufklappbar" in md
+    assert "collapsible" in md
     assert "> ###### Lösungsweg" in md or "> ##### Lösungsweg" in md
     assert "> Ein UND-Gatter liefert" in md
 
@@ -78,7 +78,7 @@ def test_task_detection():
     tasks = detect_tasks(blocks)
     titles = [t.title for t in tasks]
     assert titles == ["Aufgabe 1: Reihenschaltung", "Wahrheitstabelle"]
-    assert "Eingabefelder" in tasks[0].signals and "Lösung/Tipp" in tasks[0].signals
+    assert "inputs" in tasks[0].signals and "solution" in tasks[0].signals
     assert tasks[0].context[-1] == "Schaltungen"
     assert not any("Kontakt" in t for t in titles) and not any(t == "Übungen" for t in titles)
 
@@ -100,11 +100,11 @@ def test_web_export_writes_markdown_not_html(tmp_path):
     info = export([{"name": "schule.example/blatt.html", "data": data, "result": r, "ids": None,
                     "web": {"url": url, "css": ""}}], str(tmp_path / "out"))
     out = tmp_path / "out"
-    assert (out / "bereinigt" / "schule.example" / "blatt.md").exists()
-    assert not (out / "bereinigt" / "schule.example" / "blatt.html").exists()
-    tasks = (out / "Aufgaben_gesamt.md").read_text(encoding="utf-8")
+    assert (out / "cleaned" / "schule.example" / "blatt.md").exists()
+    assert not (out / "cleaned" / "schule.example" / "blatt.html").exists()
+    tasks = (out / "Tasks_all.md").read_text(encoding="utf-8")
     assert "Aufgabe 1: Reihenschaltung" in tasks and "Wahrheitstabelle" in tasks
-    assert (out / "Webseiten_Text_gesamt.md").exists()
+    assert (out / "Website_text_all.md").exists()
     assert info["summary"][0]["tasks"] == 2
 
 
@@ -112,7 +112,7 @@ def test_source_only_findings_are_reported():
     rendered = b"<html><body><p>Harmloser Text nach JavaScript.</p></body></html>"
     source = f"<html><body><p>{INJ}</p><script>document.body.innerHTML='<p>Harmloser Text</p>'</script></body></html>".encode()
     r = scan_web_page("x.html", rendered, "https://x.example/", "", source)
-    extra = [f for f in r.findings if f.title.startswith("Nur im Seitenquelltext")]
+    extra = [f for f in r.findings if f.title.startswith("Only in page source")]
     assert extra and not extra[0].removable
 
 
@@ -142,7 +142,7 @@ def test_group_tasks_ihr_form_questions_and_footer():
             "<footer><p>Impressum · Datenschutz</p></footer>")
     tasks = detect_tasks(extract_blocks(page))
     assert [t.title for t in tasks] == ["Persona A", "Fragen zur Sicherung"]
-    assert "Arbeitsanweisung" in tasks[0].signals and "Fragen" in tasks[0].signals
+    assert "instruction" in tasks[0].signals and "questions" in tasks[0].signals
     assert not any("Impressum" in b.text for t in tasks for b in t.body)
     md, _ = web_markdown(page)
-    assert "Impressum" in md.split("## Seitentext", 1)[1]   # still part of the page text
+    assert "Impressum" in md.split("## Page text", 1)[1]   # still part of the page text
