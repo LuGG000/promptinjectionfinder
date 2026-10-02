@@ -2,8 +2,9 @@
 
 *[English version: README.md](README.md)*
 
-> Das Haupt-Repository liegt auf GitLab: <https://gitlab.com/LuGG000/promptinjectionfinder>. Die GitHub-Kopie ist ein reiner Read-only-Mirror –
-> Issues und Merge Requests bitte auf GitLab erstellen.
+> Das Haupt-Repository liegt auf GitLab: <https://gitlab.com/LuGG000/promptinjectionfinder>. Die GitHub-Kopie ist ein reiner Read-only-Mirror.
+> Bitte [Issues](https://gitlab.com/LuGG000/promptinjectionfinder/-/issues/new) und
+> [Merge Requests](https://gitlab.com/LuGG000/promptinjectionfinder/-/merge_requests) auf GitLab erstellen.
 
 **Deterministischer, offline arbeitender Scanner für versteckte Prompt Injections in PDF-, Markdown-, Text- und HTML-Dateien sowie ganzen Webseiten (per Link inklusive Unterseiten) – mit Bereinigung und Export.**
 

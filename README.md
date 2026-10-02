@@ -2,8 +2,9 @@
 
 *[Deutsche Version: README.de.md](README.de.md)*
 
-> The canonical repository is on GitLab: <https://gitlab.com/LuGG000/promptinjectionfinder>. The GitHub copy is a read-only mirror –
-> please open issues and merge requests on GitLab.
+> The canonical repository is on GitLab: <https://gitlab.com/LuGG000/promptinjectionfinder>. The GitHub copy is a read-only mirror.
+> Please [open issues](https://gitlab.com/LuGG000/promptinjectionfinder/-/issues/new) and
+> [merge requests](https://gitlab.com/LuGG000/promptinjectionfinder/-/merge_requests) on GitLab.
 
 **A deterministic, offline scanner for hidden prompt injections in PDF, Markdown, text and HTML files and whole websites (by link, including sub-pages) – with cleaning and export. Interface and reports in English and German.**
 
