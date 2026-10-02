@@ -1,12 +1,7 @@
 @echo off
 rem PromptInjectionFinder - update to the newest release (Windows)
+rem run_windows.bat in command line mode also repairs .venv first when needed.
+rem One line on purpose: the update may replace this file while it runs.
 setlocal
-cd /d "%~dp0"
-if not exist ".venv\Scripts\python.exe" (
-  echo Not set up yet. Please start run_windows.bat first.
-  goto end
-)
-set PYTHONUTF8=1
-".venv\Scripts\python.exe" -m pif update %*
-:end
-pause
+set PIF_LAUNCH=cli
+call "%~dp0run_windows.bat" update %* & pause & exit /b

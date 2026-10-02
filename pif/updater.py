@@ -35,8 +35,64 @@ PROGRAM_ITEMS = ("pif", "tools", "tests", "samples", "README.md", "README.de.md"
                  "update_linux_mac.sh", "install.sh", "install.ps1", ".gitlab-ci.yml", ".gitignore", ".gitattributes")
 
 
+# written by install.sh / install.ps1: the chosen options, and the version whose launchers are in place
+INSTALL_MARKER = os.path.join(ROOT, ".pif-install")
+LAUNCHER_STAMP = os.path.join(ROOT, ".pif-launchers")
+
+
 class UpdateError(Exception):
     pass
+
+
+def installed_by_installer() -> bool:
+    if getattr(sys, "frozen", False):
+        return False
+    if os.path.isfile(INSTALL_MARKER):
+        return True
+    # installations made by installers before 1.3 have no marker yet
+    if os.name == "nt":
+        local = os.environ.get("LOCALAPPDATA")
+        return bool(local) and os.path.normcase(os.path.abspath(ROOT)) == os.path.normcase(
+            os.path.join(local, "PromptInjectionFinder"))
+    launcher = os.path.join(os.environ.get("PIF_BIN") or os.path.expanduser("~/.local/bin"), "pif")
+    try:
+        with open(launcher, encoding="utf-8", errors="replace") as f:
+            text = f.read()
+    except OSError:
+        return False
+    return f'"{ROOT}$' in text or f'"{ROOT}/' in text
+
+
+def refresh_launchers() -> bool:
+    """Let the installer of the current version rewrite the pif command (PIF_LAUNCHERS_ONLY mode)."""
+    if os.name == "nt":
+        cmd = ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", os.path.join(ROOT, "install.ps1")]
+    else:
+        cmd = ["sh", os.path.join(ROOT, "install.sh")]
+    env = {**os.environ, "PIF_DIR": ROOT, "PIF_LAUNCHERS_ONLY": "1"}
+    try:
+        r = subprocess.run(cmd, env=env, capture_output=True, text=True, timeout=120)
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return r.returncode == 0
+
+
+def ensure_launchers_current() -> None:
+    """After an update (by any updater version) the first start brings the launchers up to date once."""
+    try:
+        if not installed_by_installer():
+            return
+        try:
+            with open(LAUNCHER_STAMP, encoding="utf-8") as f:
+                if f.read().strip() == __version__:
+                    return
+        except OSError:
+            pass
+        if refresh_launchers():
+            with open(LAUNCHER_STAMP, "w", encoding="utf-8") as f:
+                f.write(__version__ + "\n")
+    except Exception:  # never keep the program from starting
+        pass
 
 
 def parse_version(v: str) -> tuple:

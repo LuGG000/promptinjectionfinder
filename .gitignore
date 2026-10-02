@@ -35,3 +35,8 @@ local/
 Thumbs.db
 desktop.ini
 .claude
+
+# created by install.ps1 / install.sh in the install folder
+/bin/
+.pif-install
+.pif-launchers

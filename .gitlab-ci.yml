@@ -61,6 +61,14 @@ install-script-debian:
     - test -x "$HOME/.local/bin/pif"
     - '"$HOME/.local/bin/pif" scan samples || test $? -eq 1'
     - '"$HOME/.local/bin/pif" --version'
+    - grep -q PIF_LAUNCH "$HOME/.local/bin/pif"
+    # simulated system Python upgrade (3.11 -> other minor version): the next start recreates .venv
+    - mv "$HOME"/pif/.venv/lib/python3.* "$HOME/pif/.venv/lib/python3.0"
+    - '"$HOME/.local/bin/pif" --version'
+    - test ! -e "$HOME/pif/.venv/lib/python3.0"
+    # simulated removed base Python (dangling interpreter link)
+    - ln -sf /nonexistent/python3 "$HOME/pif/.venv/bin/python"
+    - '"$HOME/.local/bin/pif" scan samples/benign_notes.md'
 
 # Every tag vX.Y.Z becomes a GitLab release (uses the job token, no secrets needed).
 release:

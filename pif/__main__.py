@@ -194,6 +194,9 @@ def cmd_gui(args) -> int:
 
 def main(argv=None) -> int:
     _utf8_console()
+    # first start after an update: bring the launchers of an installer installation up to date
+    from .updater import ensure_launchers_current
+    ensure_launchers_current()
     # --lang works before and after the sub-command; the sub-command must not reset it
     lang_parent = argparse.ArgumentParser(add_help=False)
     lang_parent.add_argument("--lang", choices=("en", "de"), default=argparse.SUPPRESS,

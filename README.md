@@ -40,8 +40,14 @@ The installer:
 - fetches the newest release,
 - creates a private Python environment,
 - installs the two dependencies,
-- sets up launchers: on Windows a desktop and start menu shortcut, on Linux/macOS the commands
-  `promptinjectionfinder` (interface) and `pif` (command line), on Linux also a menu entry.
+- sets up launchers: the command `pif` (command line) everywhere; on Windows a desktop and start menu shortcut
+  (`pif` is `bin\pif.cmd` in the install folder, added to the *user* PATH – no admin rights), on Linux/macOS also the
+  command `promptinjectionfinder` (interface) in `~/.local/bin`, on Linux also a menu entry.
+
+Options (environment variables): `PIF_DIR` install folder, `PIF_NO_SHORTCUTS=1` no shortcuts / menu entries,
+`PIF_NO_PATH=1` (Windows) leave the user PATH alone. Open a new terminal after installing so `pif` is found.
+Uninstall on Windows: delete `%LOCALAPPDATA%\PromptInjectionFinder`, the shortcuts and its `bin` entry in the user PATH
+(*Edit environment variables for your account*).
 
 If Python is missing, the Windows installer installs it with `winget`; on Linux/macOS it shows the right package command.
 **Running it a second time updates** an existing installation.
@@ -58,7 +64,7 @@ Without the installer (e.g. after `git clone` or a ZIP download): just use the s
 | Way | Command |
 |---|---|
 | Interface | **⟳** button at the top right → “Update now” |
-| Windows | start menu “Update PromptInjectionFinder” or `update_windows.bat` |
+| Windows | `pif update`, start menu “Update PromptInjectionFinder” or `update_windows.bat` |
 | Linux / macOS | `pif update` or `./update_linux_mac.sh` |
 | Check only | `pif update --check` (exit code 10 = new version available) |
 
@@ -68,11 +74,19 @@ Releases are git tags `vX.Y.Z`; the CI turns them into GitLab releases automatic
 - **otherwise:** by downloading the release archive. Only program files are replaced; a backup goes to `.update-backup`.
 
 `.venv`, exports and your own files stay untouched. Afterwards the dependencies are updated; restart the program.
+For installer installations the first start after an update also refreshes the `pif` command (so older installations
+get it too, e.g. on Windows).
+
+**Python upgrades:** the private environment belongs to one Python version. If a system upgrade replaces it (e.g.
+Python 3.13 → 3.14 via `pacman -Syu` / `yay -Syu` or `brew upgrade`, or the old Python is uninstalled on Windows),
+the next start via `pif`, the start scripts or the menu entry recreates `.venv` automatically (needs internet once).
 
 ## Starting without the installer
 
 Everything is operated by clicking in the browser. A start script creates a private environment (`.venv`) on the first
 start and installs the two dependencies. After that everything runs offline and nothing is installed system-wide.
+On Windows the first start also adds a start menu entry “PromptInjectionFinder” for this folder (so Windows search finds
+it; skipped if one exists or with `PIF_NO_SHORTCUTS=1`). The global `pif` command is only set up by the installer.
 
 | System | Start | Requirement |
 |---|---|---|

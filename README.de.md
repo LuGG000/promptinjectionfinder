@@ -39,8 +39,15 @@ Der Installer:
 - holt das neueste Release,
 - legt eine eigene Python-Umgebung an,
 - installiert die zwei Abhängigkeiten,
-- richtet die Starter ein: unter Windows Desktop- und Startmenü-Verknüpfung, unter Linux/macOS die Befehle
-  `promptinjectionfinder` (Oberfläche) und `pif` (Kommandozeile), unter Linux zusätzlich einen Startmenü-Eintrag.
+- richtet die Starter ein: überall den Befehl `pif` (Kommandozeile); unter Windows Desktop- und Startmenü-Verknüpfung
+  (`pif` ist `bin\pif.cmd` im Installationsordner, eingetragen im *Benutzer*-PATH – ohne Adminrechte), unter
+  Linux/macOS zusätzlich den Befehl `promptinjectionfinder` (Oberfläche) in `~/.local/bin`, unter Linux außerdem einen
+  Startmenü-Eintrag.
+
+Optionen (Umgebungsvariablen): `PIF_DIR` Installationsordner, `PIF_NO_SHORTCUTS=1` keine Verknüpfungen/Menüeinträge,
+`PIF_NO_PATH=1` (Windows) Benutzer-PATH nicht ändern. Nach der Installation ein neues Terminal öffnen, damit `pif`
+gefunden wird. Deinstallation unter Windows: `%LOCALAPPDATA%\PromptInjectionFinder`, die Verknüpfungen und den
+`bin`-Eintrag im Benutzer-PATH löschen (*Umgebungsvariablen für dieses Konto bearbeiten*).
 
 Fehlt Python, installiert ihn der Windows-Installer per `winget`; unter Linux/macOS nennt er den passenden Paketbefehl.
 Ein **zweiter Aufruf aktualisiert** eine vorhandene Installation.
@@ -57,7 +64,7 @@ Ohne Installer (z. B. nach `git clone` oder ZIP-Download): einfach die Startskri
 | Weg | Befehl |
 |---|---|
 | Oberfläche | Knopf **⟳** oben rechts → „Jetzt aktualisieren“ |
-| Windows | Startmenü „Update PromptInjectionFinder“ oder `update_windows.bat` |
+| Windows | `pif update`, Startmenü „Update PromptInjectionFinder“ oder `update_windows.bat` |
 | Linux / macOS | `pif update` oder `./update_linux_mac.sh` |
 | Nur prüfen | `pif update --check` (Exit-Code 10 = neue Version verfügbar) |
 
@@ -67,12 +74,21 @@ Releases sind Git-Tags `vX.Y.Z`; die CI legt daraus automatisch ein GitLab-Relea
 - **Sonst:** per Archiv-Download. Ersetzt werden nur die Programmdateien; eine Sicherung landet in `.update-backup`.
 
 `.venv`, Exporte und eigene Dateien bleiben unberührt. Danach werden die Abhängigkeiten aktualisiert, und ein Neustart des
-Programms genügt.
+Programms genügt. Bei Installer-Installationen frischt der erste Start nach einem Update außerdem den Befehl `pif` auf
+(so bekommen ihn auch ältere Installationen, z. B. unter Windows).
+
+**Python-Upgrades:** Die eigene Umgebung gehört zu einer Python-Version. Ersetzt ein System-Upgrade sie (z. B.
+Python 3.13 → 3.14 per `pacman -Syu` / `yay -Syu` oder `brew upgrade`, oder unter Windows wird das alte Python
+deinstalliert), baut der nächste Start über `pif`, die Startskripte oder den Menüeintrag `.venv` automatisch neu auf
+(einmalig mit Internet).
 
 ## Starten ohne Installer
 
 Die Bedienung läuft komplett per Klick im Browser. Ein Startskript legt beim ersten Start eine eigene Umgebung (`.venv`)
 an und installiert die zwei Abhängigkeiten. Danach läuft alles offline, und es wird nichts systemweit installiert.
+Unter Windows legt der erste Start zusätzlich einen Startmenü-Eintrag „PromptInjectionFinder“ für diesen Ordner an (damit
+die Windows-Suche ihn findet; entfällt, wenn schon einer existiert, oder mit `PIF_NO_SHORTCUTS=1`). Den globalen Befehl
+`pif` richtet nur der Installer ein.
 
 | System | Starten | Voraussetzung |
 |---|---|---|
