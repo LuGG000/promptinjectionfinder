@@ -2,6 +2,9 @@
 
 *[English version: README.md](README.md)*
 
+> Das Haupt-Repository liegt auf GitLab: <https://gitlab.com/LuGG000/promptinjectionfinder>. Die GitHub-Kopie ist ein reiner Read-only-Mirror –
+> Issues und Merge Requests bitte auf GitLab erstellen.
+
 **Deterministischer, offline arbeitender Scanner für versteckte Prompt Injections in PDF-, Markdown-, Text- und HTML-Dateien sowie ganzen Webseiten (per Link inklusive Unterseiten) – mit Bereinigung und Export.**
 
 Wer Text aus Webseiten, PDFs oder Dokumenten an ein KI-Modell weitergibt, gibt oft mehr weiter, als er sieht:
