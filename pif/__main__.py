@@ -25,6 +25,7 @@ MSG = {
         "no_browser": "Note: no Chrome/Edge/Chromium/Brave found – JavaScript is not executed.",
         "new_version": "New version available: {latest} (installed: {current}).", "update_with": "Update with:  pif update",
         "up_to_date": "Up to date: version {current} is the newest.", "update_failed": "Update not possible: {exc}",
+        "close_window": "Press Enter to close this window ...",
     },
     "de": {
         "sev": {"critical": "KRITISCH", "high": "HOCH", "medium": "MITTEL", "low": "NIEDRIG", "info": "INFO"},
@@ -34,6 +35,7 @@ MSG = {
         "no_browser": "Hinweis: kein Chrome/Edge/Chromium/Brave gefunden – JavaScript wird nicht ausgeführt.",
         "new_version": "Neue Version verfügbar: {latest} (installiert: {current}).", "update_with": "Aktualisieren mit:  pif update",
         "up_to_date": "Aktuell: Version {current} ist die neueste.", "update_failed": "Update nicht möglich: {exc}",
+        "close_window": "Enter drücken, um dieses Fenster zu schließen ...",
     },
 }
 
@@ -188,7 +190,20 @@ def cmd_update(args) -> int:
 def cmd_gui(args) -> int:
     from .server import run
 
-    run(host=args.host, port=args.port, open_browser=not args.no_browser, preload=args.paths)
+    try:
+        run(host=args.host, port=args.port, open_browser=not args.no_browser, preload=args.paths)
+    except Exception:
+        # run_windows.bat starts the server in a window of its own, which closes when python ends:
+        # keep the error readable there
+        if not os.environ.get("PIF_OWN_WINDOW"):
+            raise
+        import traceback
+        traceback.print_exc()
+        try:
+            input("\n" + _m(args)["close_window"])
+        except (EOFError, KeyboardInterrupt):
+            pass
+        return 1
     return 0
 
 

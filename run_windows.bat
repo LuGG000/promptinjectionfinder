@@ -46,7 +46,11 @@ if defined PIF_NO_SHORTCUTS goto run
 if exist ".venv\.pif-shortcut" goto run
 powershell -NoProfile -ExecutionPolicy Bypass -Command "$l = Join-Path ([Environment]::GetFolderPath('Programs')) 'PromptInjectionFinder.lnk'; if (-not (Test-Path $l)) { $s = (New-Object -ComObject WScript.Shell).CreateShortcut($l); $s.TargetPath = '%~dp0run_windows.bat'; $s.WorkingDirectory = '%~dp0'; $s.Description = 'Check documents and web pages for hidden prompt injections'; $s.IconLocation = $env:SystemRoot + '\System32\shell32.dll,22'; $s.Save(); Write-Host 'Start menu entry PromptInjectionFinder created.' }" && type nul > ".venv\.pif-shortcut"
 :run
-"%VPY%" -m pif gui %* & pause & exit /b
+rem The server gets a window of its own without a batch file around it: Ctrl+C then simply closes
+rem it (a batch file would ask "Terminate batch job (Y/N)?" in the Windows display language).
+set PIF_OWN_WINDOW=1
+start "PromptInjectionFinder" "%VPY%" -m pif gui %*
+exit /b
 
 :nopython
 echo Python 3.9 or newer was not found. 1>&2
@@ -60,7 +64,9 @@ goto end
 echo Installing the dependencies failed (internet connection?). 1>&2
 :end
 if /i "%MODE%"=="cli" exit /b 1
-pause
-exit /b
+rem own text instead of plain "pause", whose prompt is in the Windows display language
+echo Press any key to close this window . . .
+pause >nul
+exit /b 1
 :cli_done
 exit /b %errorlevel%
