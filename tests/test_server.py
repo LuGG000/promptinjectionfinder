@@ -104,3 +104,33 @@ def test_export_zip(base):
     names = zipfile.ZipFile(io.BytesIO(body)).namelist()
     assert "PromptInjectionFinder_Export/report.html" in names
     assert "PromptInjectionFinder_Export/cleaned/attack_meeting.txt" in names
+
+
+def test_upload_batch_groups_files(base):
+    for name in ("a.txt", "b.txt"):
+        st, body, _ = call(base, f"/api/upload?name={name}&batch=grp123&batch_label=my%20folder", raw=b"hello world")
+        assert st == 200
+        b = json.loads(body)["batch"]
+        assert b["id"] == "grp123" and b["kind"] == "upload" and b["label"] == "my folder"
+    files = json.loads(call(base, "/api/files")[1])["results"]
+    assert sum(1 for f in files if (f["batch"] or {}).get("id") == "grp123") == 2
+    # ids are sanitised: anything odd gets a fresh one
+    st, body, _ = call(base, "/api/upload?name=c.txt&batch=%3Cscript%3E", raw=b"x")
+    assert re.fullmatch(r"[0-9a-f]{12}", json.loads(body)["batch"]["id"])
+
+
+def test_scan_path_is_one_batch(base):
+    st, body, _ = call(base, "/api/scan_path", {"path": SAMPLES})
+    batches = {r["batch"]["id"] for r in json.loads(body)["results"]}
+    kinds = {r["batch"]["kind"] for r in json.loads(body)["results"]}
+    assert len(batches) == 1 and kinds == {"folder"}
+
+
+def test_crawl_cancel_takes_effect_at_once():
+    job = server.CrawlJob({"url": "https://example.com/"})  # not started: stands for a worker busy on a page
+    job.results.append({"file_id": "x"})
+    assert job.snapshot()["status"] == "running" and "results" not in job.snapshot()
+    job.cancel()
+    snap = job.snapshot()
+    assert snap["status"] == "cancelled" and snap["results"] == [{"file_id": "x"}]
+    assert job.batch["kind"] == "web" and job.batch["id"] == job.id

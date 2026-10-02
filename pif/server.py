@@ -10,12 +10,14 @@ import io
 import json
 import mimetypes
 import os
+import re
 import secrets
 import socket
 import subprocess
 import sys
 import tempfile
 import threading
+import time
 import traceback
 import urllib.parse
 import uuid
@@ -36,7 +38,7 @@ class Store:
         self.lock = threading.Lock()
         self.files = {}  # id -> {"name", "path", "data", "result"}
 
-    def add(self, name, data, path="", extra_css="", web=False, source=b""):
+    def add(self, name, data, path="", extra_css="", web=False, source=b"", batch=None):
         if web:
             from .scanner import scan_web_page
             res = scan_web_page(name, data, path, extra_css, source)
@@ -45,7 +47,7 @@ class Store:
         fid = uuid.uuid4().hex[:12]
         with self.lock:
             self.files[fid] = {"name": name, "path": path or name, "data": data, "result": res,
-                               "web": {"url": path, "css": extra_css} if web else None}
+                               "web": {"url": path, "css": extra_css} if web else None, "batch": batch}
         return fid, res
 
     def get(self, fid):
@@ -54,6 +56,13 @@ class Store:
 
 
 STORE = Store()
+
+
+def new_batch(kind: str, label: str, batch_id: str = "") -> dict:
+    """One scan run (website scan, folder scan, upload): the UI groups its files under it."""
+    if not re.fullmatch(r"[A-Za-z0-9_-]{1,32}", batch_id or ""):
+        batch_id = uuid.uuid4().hex[:12]
+    return {"id": batch_id, "kind": kind, "label": (label or "")[:300], "time": int(time.time() * 1000)}
 
 
 class CrawlJob:
@@ -71,6 +80,8 @@ class CrawlJob:
         self.log = []
         self.error = ""
         self.cancelled = False
+        self.lock = threading.Lock()
+        self.batch = new_batch("web", opts.get("url", ""), self.id)
 
     def start(self):
         threading.Thread(target=self._run, daemon=True).start()
@@ -98,19 +109,31 @@ class CrawlJob:
                 self.done, self.current = i, page.url
                 is_html = page.name.lower().endswith((".html", ".htm")) or "html" in page.content_type
                 fid, r = STORE.add(page.name, page.rendered or page.data, path=page.url, extra_css=page.css,
-                                   web=is_html, source=page.data if page.rendered else b"")
-                self.results.append(_result_payload(fid, r))
+                                   web=is_html, source=page.data if page.rendered else b"", batch=self.batch)
+                with self.lock:
+                    if self.cancelled:  # the UI already has its results: drop the page that was in progress
+                        with STORE.lock:
+                            STORE.files.pop(fid, None)
+                        break
+                    self.results.append(_result_payload(fid, r, self.batch))
             self.done = len(res.pages)
             self.status = "cancelled" if self.cancelled else "done"
         except Exception as exc:
             self.error = f"{type(exc).__name__}: {exc}"
             self.status = "error"
 
+    def cancel(self):
+        with self.lock:
+            self.cancelled = True
+
     def snapshot(self) -> dict:
-        d = {"status": self.status, "phase": self.phase, "done": self.done, "total": self.total,
-             "current": self.current, "error": self.error, "log": self.log}
-        if self.status != "running":
-            d["results"] = self.results
+        with self.lock:
+            # a cancel takes effect for the UI at once; the worker only finishes the page it is on
+            status = "cancelled" if self.cancelled and self.status == "running" else self.status
+            d = {"status": status, "phase": self.phase, "done": self.done, "total": self.total,
+                 "current": self.current, "error": self.error, "log": self.log}
+            if status != "running":
+                d["results"] = list(self.results)
         return d
 
 
@@ -118,9 +141,10 @@ JOBS = {}
 TOKEN = secrets.token_urlsafe(24)
 
 
-def _result_payload(fid, res) -> dict:
+def _result_payload(fid, res, batch=None) -> dict:
     d = res.to_dict()
     d["file_id"] = fid
+    d["batch"] = batch
     return d
 
 
@@ -200,8 +224,8 @@ class Handler(BaseHTTPRequestHandler):
                                    "browser": os.path.basename(browser) if browser else None})
             if url.path == "/api/files":
                 with STORE.lock:
-                    items = [(fid, f["result"]) for fid, f in STORE.files.items()]
-                return self._json({"results": [_result_payload(fid, r) for fid, r in items]})
+                    items = [(fid, f["result"], f.get("batch")) for fid, f in STORE.files.items()]
+                return self._json({"results": [_result_payload(fid, r, b) for fid, r, b in items]})
             if url.path == "/api/update_check":
                 from .updater import UpdateError, check
                 try:
@@ -246,19 +270,21 @@ class Handler(BaseHTTPRequestHandler):
             if url.path == "/api/upload":
                 name = (q.get("name") or ["upload.txt"])[0]
                 data = self._body()
-                fid, res = STORE.add(os.path.basename(name), data)
-                return self._json(_result_payload(fid, res))
+                batch = new_batch("upload", (q.get("batch_label") or [""])[0], (q.get("batch") or [""])[0])
+                fid, res = STORE.add(os.path.basename(name), data, batch=batch)
+                return self._json(_result_payload(fid, res, batch))
             payload = json.loads(self._body() or b"{}")
             if url.path == "/api/scan_path":
                 path = os.path.expanduser(payload.get("path", "").strip().strip('"'))
                 if not path or not os.path.exists(path):
                     return self._error("Path not found")
                 out = []
+                batch = new_batch("folder", path)
                 for fp in iter_files([path], recursive=bool(payload.get("recursive", True))):
                     with open(fp, "rb") as fh:
                         data = fh.read()
-                    fid, res = STORE.add(os.path.basename(fp), data, path=fp)
-                    out.append(_result_payload(fid, res))
+                    fid, res = STORE.add(os.path.basename(fp), data, path=fp, batch=batch)
+                    out.append(_result_payload(fid, res, batch))
                     if len(out) >= 2000:
                         break
                 return self._json({"results": out})
@@ -322,7 +348,7 @@ class Handler(BaseHTTPRequestHandler):
             if url.path == "/api/crawl_cancel":
                 job = JOBS.get(payload.get("job", ""))
                 if job:
-                    job.cancelled = True
+                    job.cancel()
                 return self._json({"ok": True})
             if url.path == "/api/remove":
                 with STORE.lock:

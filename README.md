@@ -110,7 +110,9 @@ python3 -m venv .venv && .venv/bin/pip install -r requirements.txt   # Windows: 
 ### Web interface
 
 1. Drop files or whole folders, use **Choose files** / **Upload folder**, or enter a local folder via **Scan path**.
-2. Each file appears on the left with a verdict (*Dangerous*, *Suspicious*, *Clean*).
+2. Each file appears on the left with a verdict (*Dangerous*, *Suspicious*, *Clean*). The files of one scan (website,
+   folder, upload) are grouped under the start URL or folder; the newest scan is unfolded, older ones fold away, and the
+   **×** on a group removes that whole scan.
 3. **Findings:** every finding has a checkbox; recommended ones are preselected.
    **Document:** for text, Markdown and HTML the evidence is highlighted and invisible characters appear as chips;
    for PDFs the rendered page is shown and red frames mark the invisible text.

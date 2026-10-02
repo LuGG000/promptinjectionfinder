@@ -563,6 +563,7 @@ def _styled_letter_findings(text: str) -> list:
 
 
 _ANSI = re.compile(r"\x1b(?:\[[0-9;?]*[ -/]*[@-~]|\][^\x07\x1b]*(?:\x07|\x1b\\)|[@-Z\\-_])")
+_LINE_BREAK = re.compile(r"[\r\n]")
 _CONCEAL = re.compile(r"\x1b\[(?:[0-9;]*;)?8m(.*?)(?:\x1b\[(?:0|28)?(?:;[0-9;]*)?m|$)", re.S)
 
 
@@ -602,8 +603,15 @@ def _terminal_findings(text: str) -> list:
                 location=Location(start=seqs[0].start(), end=seqs[-1].end(), line=line_of(text, seqs[0].start()),
                                   ranges=[[m.start(), m.end(), ""] for m in seqs]),
             ))
-    for m in re.finditer(r"([^\r\n]+)\r(?!\n)(?=[^\r\n])", text):
-        hidden = m.group(1)
+    # a lone CR with text before it (back to the previous line break) and text after it; one linear pass
+    # over the line breaks (a regex like ([^\r\n]+)\r is quadratic on long lines, e.g. minified HTML)
+    prev = -1
+    for br in (_LINE_BREAK.finditer(text) if "\r" in text else ()):
+        p, start = br.start(), prev + 1
+        prev = p
+        if text[p] != "\r" or p == start or p + 1 >= len(text) or text[p + 1] in "\r\n":
+            continue
+        hidden = text[start:p]
         ps, hits = payload_score(hidden)
         findings.append(Finding(
             category="hidden",
@@ -614,9 +622,9 @@ def _terminal_findings(text: str) -> list:
                           "Ein einzelnes CR (\\r) lässt nachfolgenden Text den vorherigen in Terminals überschreiben – "
                           "der vordere Teil ist für Menschen unsichtbar.") + _payload_note(hits),
             score=max(35.0, min(100.0, ps + 20)) if hits else 35.0,
-            evidence=visible_repr(m.group(0).replace("\r", "⟦CR⟧")),
+            evidence=visible_repr(text[start:p + 1].replace("\r", "⟦CR⟧")),
             decoded=hidden,
-            location=Location(start=m.start(), end=m.end(), line=line_of(text, m.start())),
+            location=Location(start=start, end=p + 1, line=line_of(text, start)),
             tags=["hidden"],
         ))
     return findings

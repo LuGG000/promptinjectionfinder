@@ -16,6 +16,7 @@ const state = {
   choice: {},           // file_id -> Set(finding ids to remove)
   tab: "findings",
   info: null,
+  collapsed: new Set(),  // batch ids of collapsed scan groups in the sidebar
 };
 
 const $ = (s, el = document) => el.querySelector(s);
@@ -65,11 +66,16 @@ async function uploadFiles(fileList) {
   const files = Array.from(fileList).filter((f) => f.size > 0);
   if (!files.length) return;
   let done = 0, last = null;
+  // all files of one drop/selection form one scan group; a dropped folder gives it its name
+  const batch = Math.random().toString(36).slice(2, 14);
+  const top = files[0].webkitRelativePath ? files[0].webkitRelativePath.split("/")[0] : "";
+  const label = top && files.every((f) => (f.webkitRelativePath || "").startsWith(top + "/")) ? top : "";
   busy(true, t("scanning_n", 0, files.length));
   try {
     for (const f of files) {
       try {
-        const r = await api("/api/upload?name=" + encodeURIComponent(f.webkitRelativePath || f.name), { method: "POST", body: f });
+        const r = await api("/api/upload?name=" + encodeURIComponent(f.webkitRelativePath || f.name) +
+          "&batch=" + batch + "&batch_label=" + encodeURIComponent(label), { method: "POST", body: f });
         r.name = f.webkitRelativePath || f.name;
         addResult(r);
         last = r.file_id;
@@ -83,7 +89,8 @@ async function uploadFiles(fileList) {
     busy(false);
   }
   sortFiles();
-  if (!state.selected || files.length > 1) state.selected = state.files[0]?.file_id || last;
+  if (!state.selected || files.length > 1) state.selected = state.files.find((f) => f.batch?.id === batch)?.file_id || last;
+  focusBatch(batch);
   renderAll();
 }
 
@@ -93,7 +100,8 @@ async function scanPath(path) {
     const data = await api("/api/scan_path", { body: { path, recursive: true } });
     data.results.forEach(addResult);
     sortFiles();
-    state.selected = state.files[0]?.file_id || null;
+    state.selected = state.files.find((f) => data.results.some((r) => r.file_id === f.file_id))?.file_id || state.selected;
+    if (data.results[0]?.batch) focusBatch(data.results[0].batch.id);
     renderAll();
     toast(t("n_files_scanned", data.results.length));
   } catch (e) {
@@ -105,6 +113,30 @@ async function scanPath(path) {
 
 function sortFiles() {
   state.files.sort((a, b) => b.risk_score - a.risk_score || a.name.localeCompare(b.name));
+}
+
+// a new scan opens its group and folds the older ones, so many scans stay tidy
+function focusBatch(id) {
+  state.files.forEach((f) => { if (f.batch && f.batch.id !== id) state.collapsed.add(f.batch.id); });
+  state.collapsed.delete(id);
+}
+
+// sidebar groups: one per scan run, newest first; files keep their risk order inside a group
+function groupFiles() {
+  const groups = new Map();
+  for (const f of state.files) {
+    const key = f.batch ? f.batch.id : "_" + f.file_id;
+    if (!groups.has(key)) groups.set(key, { id: key, batch: f.batch, files: [] });
+    groups.get(key).files.push(f);
+  }
+  return [...groups.values()].sort((a, b) => (b.batch?.time || 0) - (a.batch?.time || 0));
+}
+
+function groupLabel(g) {
+  const b = g.batch;
+  if (b.kind === "web") return b.label.replace(/^https?:\/\//, "").replace(/\/$/, "") || t("group_web");
+  if (b.kind === "folder") return b.label.replace(/[\\/]+$/, "").split(/[\\/]/).pop() || b.label;  // full path in the tooltip
+  return b.label || t("files_count", g.files.length);
 }
 
 function current() {
@@ -122,12 +154,26 @@ function renderSidebar() {
   const ul = $("#file-list");
   $("#file-count").textContent = state.files.length ? `(${state.files.length})` : "";
   $("#btn-clear").hidden = state.files.length === 0;
-  ul.innerHTML = state.files.map((f) => {
+  const fileItem = (f, inGroup) => {
     const n = f.findings.filter((x) => x.severity !== "info").length;
     const badge = f.error ? `<span class="badge error">${t("error")}</span>` : `<span class="badge ${f.verdict}">${verdictName(f.verdict)}</span>`;
-    return `<li data-id="${f.file_id}" class="${f.file_id === state.selected ? "active" : ""}" title="${esc(f.path)}">
+    return `<li data-id="${f.file_id}" class="${f.file_id === state.selected ? "active" : ""}${inGroup ? " in-group" : ""}" title="${esc(f.path)}">
       <span class="fname">${esc(f.name)}</span>${badge}
       <span class="fsub">${typeName(f.filetype)} · ${t("risk")} ${Math.round(f.risk_score)} · ${t("findings_n", n)}</span></li>`;
+  };
+  const loc = LANG === "de" ? "de-DE" : "en-US";
+  ul.innerHTML = groupFiles().map((g) => {
+    if (!g.batch || (g.files.length < 2 && g.batch.kind !== "web")) return g.files.map((f) => fileItem(f, false)).join("");
+    const open = !state.collapsed.has(g.id);
+    const worst = g.files.reduce((a, f) => (f.risk_score > a.risk_score ? f : a), g.files[0]);
+    const bad = g.files.filter((f) => f.verdict !== "clean").length;
+    const when = new Date(g.batch.time).toLocaleString(loc, { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+    return `<li class="group${open ? " open" : ""}" data-batch="${esc(g.id)}" title="${esc(g.batch.label)}">
+      <button class="g-head" aria-expanded="${open}"><span class="g-caret" aria-hidden="true">▸</span>
+        <span class="fname">${esc(groupLabel(g))}</span><span class="badge ${worst.verdict}">${verdictName(worst.verdict)}</span>
+        <span class="fsub">${t("group_" + g.batch.kind)} · ${esc(when)} · ${t("files_count", g.files.length)}${bad ? " · " + t("n_flagged", bad) : ""}</span>
+      </button><button class="g-remove" title="${t("remove_scan")}" aria-label="${t("remove_scan")}">×</button></li>` +
+      (open ? g.files.map((f) => fileItem(f, true)).join("") : "");
   }).join("");
   const counts = { dangerous: 0, suspicious: 0, clean: 0 };
   state.files.forEach((f) => counts[f.verdict]++);
@@ -467,6 +513,7 @@ function openUrlDialog() {
 function setCrawlRunning(on) {
   $("#url-go").hidden = on;
   $("#url-cancel").hidden = !on;
+  $("#url-cancel").disabled = false;
   $("#url-close").disabled = on;
   ["#url-input", "#url-depth", "#url-max", "#url-same", "#url-docs", "#url-discover", "#url-robots"]
     .forEach((s) => ($(s).disabled = on));
@@ -514,12 +561,14 @@ async function pollCrawl() {
   }
   const pct = st.total ? Math.min(100, Math.round((st.done / st.total) * 100)) : 0;
   $("#url-bar").style.width = Math.max(2, st.phase === "analyze" ? 50 + pct / 2 : pct / 2) + "%";
-  $("#url-status").textContent = `${t(st.phase === "analyze" ? "phase_analyze" : "phase_fetch")}: ${st.done}/${st.total} · ${st.current || ""}`;
+  $("#url-status").textContent = crawl.cancelling ? t("cancelling")
+    : `${t(st.phase === "analyze" ? "phase_analyze" : "phase_fetch")}: ${Math.min(st.done + (st.phase === "analyze" ? 1 : 0), st.total)}/${st.total} · ${st.current || ""}`;
   if (st.status === "running") {
     crawl.timer = setTimeout(pollCrawl, 400);
     return;
   }
   crawl.job = null;
+  crawl.cancelling = false;
   setCrawlRunning(false);
   $("#url-bar").style.width = "100%";
   if (st.status === "error") {
@@ -528,7 +577,10 @@ async function pollCrawl() {
     const results = st.results || [];
     results.forEach(addResult);
     sortFiles();
-    if (results.length) state.selected = results.slice().sort((a, b) => b.risk_score - a.risk_score)[0].file_id;
+    if (results.length) {
+      state.selected = results.slice().sort((a, b) => b.risk_score - a.risk_score)[0].file_id;
+      if (results[0].batch) focusBatch(results[0].batch.id);
+    }
     renderAll();
     const bad = results.filter((r) => r.verdict !== "clean").length;
     $("#url-status").textContent = `${st.status === "cancelled" ? t("cancelled") : ""}${t("pages_scanned", results.length)}` +
@@ -549,7 +601,11 @@ function renderCrawlLog(log) {
 }
 
 async function cancelCrawl() {
-  if (crawl.job) await api("/api/crawl_cancel", { body: { job: crawl.job } }).catch(() => {});
+  if (!crawl.job) return;
+  $("#url-cancel").disabled = true;
+  $("#url-status").textContent = t("cancelling");
+  crawl.cancelling = true;
+  await api("/api/crawl_cancel", { body: { job: crawl.job } }).catch(() => {});
 }
 
 /* ------------------------------------------------------------------ updates */
@@ -650,7 +706,23 @@ function initEvents() {
     state.files = []; state.selected = null; state.choice = {};
     renderAll();
   };
-  $("#file-list").onclick = (e) => {
+  $("#file-list").onclick = async (e) => {
+    const group = e.target.closest("li.group");
+    if (group && e.target.closest(".g-remove")) {
+      const ids = state.files.filter((f) => f.batch?.id === group.dataset.batch).map((f) => f.file_id);
+      await api("/api/remove", { body: { ids } }).catch(() => {});
+      state.files = state.files.filter((f) => !ids.includes(f.file_id));
+      ids.forEach((id) => delete state.choice[id]);
+      if (ids.includes(state.selected)) state.selected = state.files[0]?.file_id || null;
+      renderAll();
+      return;
+    }
+    if (group) {
+      const id = group.dataset.batch;
+      if (state.collapsed.has(id)) state.collapsed.delete(id); else state.collapsed.add(id);
+      renderSidebar();
+      return;
+    }
     const li = e.target.closest("li[data-id]");
     if (!li) return;
     state.selected = li.dataset.id;
@@ -731,6 +803,11 @@ async function init() {
     existing.results.forEach(addResult);
     sortFiles();
     state.selected = state.files[0]?.file_id || null;
+    const newest = groupFiles().find((g) => g.batch);
+    if (newest) {  // after a reload only the latest scan is unfolded, with its riskiest file selected
+      focusBatch(newest.id);
+      state.selected = newest.files[0].file_id;
+    }
     // Deep links: #file=<name>&tab=document
     const h = new URLSearchParams(location.hash.slice(1));
     if (h.get("file")) {

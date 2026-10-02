@@ -170,7 +170,7 @@ def _css_rules(text: str, extra_css: str = "") -> tuple:
         for k, v in parse_style(body).items():
             if k.startswith("--"):
                 variables[k] = v
-    rules = [(sp, o, ch, resolve_vars(pr, variables)) for sp, o, ch, pr in rules]
+    rules = _Rules((sp, o, ch, resolve_vars(pr, variables)) for sp, o, ch, pr in rules)
     _css_rules.variables = variables
     toggles = set()
     for sel, body in raw_rules:
@@ -183,6 +183,24 @@ def _css_rules(text: str, extra_css: str = "") -> tuple:
     return rules, toggles
 
 
+class _Rules(list):
+    """Sorted CSS rules plus an index by the element compound (id, one class, tag or *), so an
+    element only checks rules that can match it instead of every rule of large stylesheets."""
+
+    def __init__(self, rules):
+        super().__init__(rules)
+        self.index = {}
+        for i, (_spec, _order, chain, _props) in enumerate(self):
+            tag, classes, ids = chain[-1]
+            key = ("#", min(ids)) if ids else (".", min(classes)) if classes else ("t", tag) if tag else ("*",)
+            self.index.setdefault(key, []).append(i)
+
+    def candidates(self, me: dict):
+        keys = [("*",), ("t", me["tag"])] + [(".", c) for c in me["classes"]] + [("#", i) for i in me["ids"]]
+        hits = sorted(i for k in keys for i in self.index.get(k, ()))
+        return [self[i] for i in hits]
+
+
 def _matches(compound, info) -> bool:
     tag, classes, ids = compound
     return ((tag is None or tag == info["tag"]) and classes <= info["classes"] and ids <= info["ids"])
@@ -192,7 +210,7 @@ def _element_props(tag: str, attrs: dict, css: list, ancestors=()) -> dict:
     props = {}
     me = {"tag": tag, "classes": frozenset(attrs.get("class", "").lower().split()),
           "ids": frozenset([attrs["id"].lower()] if attrs.get("id") else [])}
-    for _spec, _order, chain, rprops in css:
+    for _spec, _order, chain, rprops in (css.candidates(me) if isinstance(css, _Rules) else css):
         if not _matches(chain[-1], me):
             continue
         # descendant semantics: earlier compounds must match ancestors in order

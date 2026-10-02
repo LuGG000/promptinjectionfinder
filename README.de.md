@@ -113,7 +113,9 @@ python3 -m venv .venv && .venv/bin/pip install -r requirements.txt   # Windows: 
 
 1. Dateien oder ganze Ordner per Drag & Drop ablegen, über **Dateien wählen** / **Ordner hochladen** auswählen
    oder per **Pfad scannen** einen lokalen Ordner angeben.
-2. Links erscheint jede Datei mit Bewertung (*Gefährlich*, *Verdächtig*, *Unauffällig*).
+2. Links erscheint jede Datei mit Bewertung (*Gefährlich*, *Verdächtig*, *Unauffällig*). Die Dateien eines Scans
+   (Website, Ordner, Upload) stehen gruppiert unter Start-URL bzw. Ordner; der neueste Scan ist aufgeklappt, ältere
+   klappen zu, und das **×** an einer Gruppe entfernt den ganzen Scan.
 3. **Funde:** Jeder Fund hat eine Checkbox. Empfohlene Funde sind vorausgewählt.
    **Dokument:** Bei Text, Markdown und HTML wird die Fundstelle farbig markiert und unsichtbare Zeichen erscheinen als Chips.
    Bei PDFs wird die gerenderte Seite angezeigt, und rote Rahmen zeigen den unsichtbaren Text.
