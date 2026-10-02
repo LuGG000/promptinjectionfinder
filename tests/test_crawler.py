@@ -30,6 +30,10 @@ SITE = {
     "/private/secret.html": ("text/html", "<html><body>geheim</body></html>"),
     "/vorlage.html": ("text/html", "<html><body><p>Vorlage ohne Auffälligkeiten.</p></body></html>"),
     "/robots.txt": ("text/plain", "User-agent: *\nDisallow: /private/\n"),
+    "/wiki/Start": ("text/html", '<html><body><a href="/wiki/Install">Install</a> <a href="/pricing">Preise</a>'
+                                 '<a href="/docs/report.txt">Bericht</a></body></html>'),
+    "/wiki/Install": ("text/html", "<html><body><p>Installation</p></body></html>"),
+    "/pricing": ("text/html", "<html><body><p>Preise</p></body></html>"),
 }
 SITE["/index.html"] = ("text/html", SITE["/"][1])
 REQUESTS = []
@@ -161,3 +165,13 @@ def test_crawl_job_via_api(site):
     finally:
         httpd.shutdown()
         httpd.server_close()
+
+
+def test_stays_below_start_folder(site):
+    seen = []
+    res = Crawler(site + "/wiki/Start", max_depth=1, delay=0, on_page=lambda p: seen.append(p.url)).run()
+    urls = {p.url.split("/", 3)[3] for p in res.pages}
+    assert urls == {"wiki/Start", "wiki/Install", "docs/report.txt"}  # documents may live elsewhere
+    assert seen == [p.url for p in res.pages]  # every page is handed over as soon as it is complete
+    res = Crawler(site + "/wiki/Start", max_depth=1, delay=0, same_path=False).run()
+    assert "pricing" in {p.url.split("/", 3)[3] for p in res.pages}

@@ -34,6 +34,7 @@ SEP_STRICT = r"[^a-z0-9_]+"  # "_" joins identifiers (new_task), not words
 
 # A negation right before a match ("do not ignore previous instructions",
 # "never share your password") turns the phrase into benign advice.
+_LIST_ITEMS = re.compile(r"[\"']\s*,\s*[\"']")
 _NEGATED = re.compile(r"(?<![a-z])(not|never|dont|don t|nie|niemals|nicht|kein|keine|keinesfalls)[^a-z0-9]{1,3}$")
 
 # (id, category, weight, pattern, raw)
@@ -378,6 +379,8 @@ def find_hits(text: str, rules=None, leet: bool = True) -> list:
         s, e = view.span(ms, me)
         if need_obfuscation and not _obfuscated(text[s:e]):
             return
+        if not rule.raw and _LIST_ITEMS.search(text, s, e):
+            return  # words from different items of a data list ("attention","copilot") are no sentence
         key = (rule.id, s // 8)
         if key in seen:
             return

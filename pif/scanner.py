@@ -3,9 +3,10 @@ from __future__ import annotations
 
 import codecs
 import os
+import re
 
-from .i18n import T, tr
-from .markup_analyzer import analyze_markup
+from .i18n import T, text as i18n_text, tr
+from .markup_analyzer import analyze_markup, code_text, strip_tags
 from .models import ScanResult
 from .text_analyzer import analyze_text
 
@@ -104,6 +105,25 @@ def _absorb(findings: list) -> list:
     return final
 
 
+def _commands_in_code(findings: list, text: str, is_html: bool) -> None:
+    """Install/how-to pages show commands like "curl … | sh" in code blocks for the reader to copy.
+    A pure command finding whose matches all lie in visible code is information, not an attack
+    (hidden code blocks are reported by the hidden-content checks)."""
+    code = None
+    for f in findings:
+        if f.category != "injection" or f.tags != ["tool"] or not f.hit_spans:
+            continue
+        if code is None:
+            code = code_text(text, is_html)
+        if code and all(re.sub(r"\s+", "", text[s:e]).lower() in code for s, e in f.hit_spans):
+            f.score = min(f.score, 15.0)
+            f.default_remove = False
+            f.description = tr(f.description) + T(
+                " (Shown in a code block – usual for installation and how-to instructions, so not counted as an attack.)",
+                " (Steht in einem Code-Block – üblich für Installations- und Anleitungsseiten, daher nicht als Angriff "
+                "gewertet.)")
+
+
 def scan_bytes(name: str, data: bytes, path: str = "", extra_css: str = "") -> ScanResult:
     """``extra_css``: external stylesheets of a web page (needed to see CSS-hidden text)."""
     ftype = detect_type(name, data)
@@ -121,6 +141,8 @@ def scan_bytes(name: str, data: bytes, path: str = "", extra_css: str = "") -> S
             if ftype in ("markdown", "html"):
                 findings += analyze_markup(text, is_html=ftype == "html", extra_css=extra_css)
             result.findings = _absorb(findings)
+            if ftype in ("markdown", "html"):
+                _commands_in_code(result.findings, text, ftype == "html")
             result.text_preview = text[:PREVIEW_LIMIT]
             result.stats = {"encoding": enc, "chars": len(text), "lines": text.count("\n") + 1,
                             "truncated_preview": len(text) > PREVIEW_LIMIT}
@@ -128,6 +150,15 @@ def scan_bytes(name: str, data: bytes, path: str = "", extra_css: str = "") -> S
         result.error = f"{type(exc).__name__}: {exc}"
     result.findings.sort(key=lambda f: -f.score)
     return result
+
+
+def _same_finding_key(f) -> tuple:
+    """Identity of a finding across the rendered DOM and the delivered source: the matched words for
+    pattern findings, else the text without markup (the HTML around it differs between the two)."""
+    m = re.search(r"Matches: (.+)$", i18n_text(f.description, "en"))
+    if f.category == "injection" and m:
+        return f.rule, m.group(1)
+    return f.rule, " ".join(strip_tags(f.decoded or f.evidence).split())[:200]
 
 
 def scan_web_page(name: str, data: bytes, url: str, extra_css: str = "", source: bytes = b"") -> ScanResult:
@@ -140,10 +171,9 @@ def scan_web_page(name: str, data: bytes, url: str, extra_css: str = "", source:
     res.stats["rendered"] = bool(source)
     if source:
         src = scan_bytes(name, source, path=url, extra_css=extra_css)
-        seen = {(f.rule, (f.decoded or f.evidence)[:200]) for f in res.findings}
+        seen = {_same_finding_key(f) for f in res.findings}
         for f in src.findings:
-            key = (f.rule, (f.decoded or f.evidence)[:200])
-            if key in seen or f.score < 20:
+            if _same_finding_key(f) in seen or f.score < 20:
                 continue
             f.title = T("Only in page source: ", "Nur im Seitenquelltext: ") + f.title
             f.description = tr(f.description) + T(

@@ -130,7 +130,13 @@ python3 -m venv .venv && .venv/bin/pip install -r requirements.txt   # Windows: 
 
 Über **Webseite scannen** gibst du eine URL ein. Das Programm lädt die Seite und folgt auf Wunsch den Links und Unterseiten.
 
-- **Link-Tiefe:** 0 = nur diese Seite, 1–3 = Links weiterverfolgen. Dazu kommt ein Limit für die Seitenzahl, standardmäßig 30.
+- **Link-Tiefe:** 0 = nur diese Seite, 1 = plus die dort verlinkten Seiten, 2 = plus die von dort verlinkten, … Dazu
+  kommt ein Limit für die Seitenzahl, standardmäßig 30. Die Tiefe zählt Link-*Ebenen*, nicht Seiten.
+- **Nur Seiten unterhalb dieser Adresse** ist voreingestellt: Ab `…/wiki/Installation` werden nur `…/wiki/…`-Seiten
+  verfolgt, nicht die Navigation der ganzen Website (verlinkte Dokumente werden weiterhin geladen). CLI: `--all-paths`
+  schaltet das ab.
+- Seiten werden analysiert, während die nächsten noch laden; mit JavaScript kostet das Laden/Rendern die meiste Zeit
+  (etwa 5 s pro Seite) – für statische Seiten abschalten, dann geht es schneller.
 - **Nur dieselbe Domain** ist voreingestellt; **robots.txt** wird beachtet. Beides lässt sich für eigene Seiten abschalten.
 - **Verlinkte Dokumente** (PDF, TXT, MD, …) und **iframes** werden mitgeladen und mitgescannt.
 - **Externe Stylesheets** werden mitgeladen, inklusive CSS-Variablen und Farbverläufen. Nur so wird Text erkannt, der über eine CSS-Klasse

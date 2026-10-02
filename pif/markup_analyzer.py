@@ -69,12 +69,46 @@ def _attrs(raw: str) -> dict:
     return out
 
 
+def _split_selectors(text: str) -> list:
+    """Split a selector list at top-level commas only: ".a:is(.b, .c), .d" -> [".a:is(.b, .c)", ".d"]."""
+    out, depth, cur = [], 0, []
+    for ch in text:
+        if ch in "([":
+            depth += 1
+        elif ch in ")]":
+            depth = max(0, depth - 1)
+        elif ch == "," and depth == 0:
+            out.append("".join(cur))
+            cur = []
+            continue
+        cur.append(ch)
+    out.append("".join(cur))
+    return out
+
+
+def _strip_pseudo_functions(sel: str) -> str:
+    """Drop functional pseudo-classes with their (possibly nested) argument: a:not(.x:is(.y, .z)) -> a."""
+    out, i, n = [], 0, len(sel)
+    while i < n:
+        m = re.match(r":{1,2}[\w-]+\(", sel[i:])
+        if not m:
+            out.append(sel[i])
+            i += 1
+            continue
+        i += m.end()
+        depth = 1
+        while i < n and depth:
+            depth += {"(": 1, ")": -1}.get(sel[i], 0)
+            i += 1
+    return "".join(out)
+
+
 def _compound(sel: str):
     """Parse 'div.a.b#x' into (tag, classes, ids); None for unsupported parts."""
     if re.search(r":{1,2}(before|after|hover|focus|active|visited|placeholder|selection)", sel):
         return None  # pseudo elements/states do not describe the static text
     sel = re.sub(r":{1,2}[\w-]+(\([^)]*\))?", "", sel)
-    if not sel or "[" in sel or "*" in sel:
+    if not sel or re.search(r"[\[*()]", sel):
         return None
     tag = None
     classes, ids = set(), set()
@@ -85,6 +119,8 @@ def _compound(sel: str):
             ids.add(name)
         else:
             tag = name
+    if tag is None and not classes and not ids:
+        return None  # leftovers like ")" of a mangled selector must not become a rule for every element
     return (tag, frozenset(classes), frozenset(ids))
 
 
@@ -153,12 +189,12 @@ def _css_rules(text: str, extra_css: str = "") -> tuple:
         css = re.sub(r"/\*.*?\*/", "", css, flags=re.S)
         for selector_text, body in _css_blocks(css):
             props = parse_style(body)
-            for sel in selector_text.split(","):
+            for sel in _split_selectors(selector_text):
                 sel = sel.strip().lower()
                 if not sel:
                     continue
                 raw_rules.append((sel, body.lower()))
-                chain = [_compound(p) for p in re.split(r"\s*[>+~]\s*|\s+", sel) if p]
+                chain = [_compound(p) for p in re.split(r"\s*[>+~]\s*|\s+", _strip_pseudo_functions(sel)) if p]
                 if not chain or any(c is None for c in chain):
                     continue
                 spec = sum(len(c[2]) * 100 + len(c[1]) * 10 + (1 if c[0] else 0) for c in chain)
@@ -387,9 +423,10 @@ _STRUCTURAL_ATTRS = {"class", "id", "style", "href", "src", "srcset", "type", "r
                      "for", "tabindex", "colspan", "rowspan", "align", "valign", "border", "cellpadding", "cellspacing"}
 
 
-def analyze_attributes(text: str) -> list:
+def analyze_attributes(text: str, is_html: bool = True) -> list:
     """Alt texts, titles, aria-labels and meta contents are invisible but read by LLMs."""
     findings = []
+    body_text = None
     for m in TAG_RE.finditer(text):
         if m.group(0).startswith("<!--") or m.group(1):
             continue
@@ -399,6 +436,12 @@ def analyze_attributes(text: str) -> list:
                 continue
             ps, hits = payload_score(val)
             if hits:
+                # a copy of text that is shown on the page anyway (copy-to-clipboard buttons next to a
+                # code block, title = link text) hides nothing; the visible copy is checked as text
+                if body_text is None and is_html:  # Markdown source also holds titles etc. that are not shown
+                    body_text = _squash(strip_tags(text))  # without whitespace: tags inside code add spaces
+                if body_text and _squash(val) in body_text:
+                    continue
                 findings.append(Finding(
                     category="hidden", rule="html.attribute",
                     title=T(f"Instruction in the “{key}” attribute", f"Anweisung im Attribut „{key}“"),
@@ -552,6 +595,21 @@ def active_content(text: str, is_html: bool = False) -> list:
     return findings
 
 
+def _squash(s: str) -> str:
+    return re.sub(r"\s+", "", s).lower()
+
+
+def code_text(text: str, is_html: bool) -> str:
+    """All text inside code blocks/spans (<pre>, <code>, Markdown fences and backticks), without
+    whitespace: commands there are shown to the reader as instructions, not hidden from them."""
+    parts = [strip_tags(m.group(2)) for m in re.finditer(r"<(pre|code)\b[^>]*>(.*?)</\1\s*>", text, re.S | re.I)]
+    if not is_html:
+        parts += [m.group(2) for m in re.finditer(
+            r"(?ms)^[ \t]{0,3}(`{3,}|~{3,})[^\n]*\n(.*?)(?:^[ \t]{0,3}\1[ \t]*$|\Z)", text)]
+        parts += [m.group(2) for m in re.finditer(r"(`+)(?!`)(.+?)(?<!`)\1(?!`)", text, re.S)]
+    return _squash(" ".join(parts))
+
+
 def mask_markdown_code(text: str) -> str:
     """Blank out fenced/indented code blocks and inline code spans (offsets preserved).
 
@@ -569,7 +627,7 @@ def analyze_markup(text: str, is_html: bool, extra_css: str = "") -> list:
     src = text if is_html else mask_markdown_code(text)
     findings += analyze_comments(src)
     findings += analyze_html_structure(src, hidden_base=18.0 if is_html else 35.0, extra_css=extra_css)
-    findings += analyze_attributes(src)
+    findings += analyze_attributes(src, is_html)
     findings += analyze_latex(src)
     findings += active_content(src, is_html)
     if not is_html:

@@ -112,7 +112,7 @@
         <select id="url-depth">
           <option value="0" data-i18n="depth0">0 – this page only</option>
           <option value="1" selected data-i18n="depth1">1 – plus directly linked pages</option>
-          <option value="2" data-i18n="depth2">2 – two levels deep</option>
+          <option value="2" data-i18n="depth2">2 – plus the pages linked from those</option>
           <option value="3" data-i18n="depth3">3 – three levels deep</option>
         </select>
       </label>
@@ -120,6 +120,7 @@
         <input id="url-max" type="number" min="1" max="300" value="30">
       </label>
     </div>
+    <label class="check"><input type="checkbox" id="url-path" checked> <span data-i18n="url_path">Only pages below this address (e.g. …/wiki/…)</span></label>
     <label class="check"><input type="checkbox" id="url-same" checked> <span data-i18n="url_same">Same domain only</span></label>
     <label class="check"><input type="checkbox" id="url-docs" checked> <span data-i18n="url_docs">Also scan linked documents (PDF, TXT, MD …)</span></label>
     <label class="check"><input type="checkbox" id="url-discover"> <span data-i18n="url_discover">Also try files mentioned in text/comments</span></label>

@@ -132,6 +132,7 @@ def cmd_scan_url(args) -> int:
     if not args.no_render and not render:
         print(m["no_browser"], file=sys.stderr)
     crawler = Crawler(args.url, max_depth=args.depth, max_pages=args.max_pages, same_host=not args.all_hosts,
+                      same_path=not args.all_paths,
                       respect_robots=not args.ignore_robots, include_documents=not args.no_documents,
                       discover_mentions=args.discover, progress=progress, render_js=render)
     res = crawler.run()
@@ -243,6 +244,8 @@ def main(argv=None) -> int:
     u.add_argument("--depth", type=int, default=1, help="link depth (0 = this page only, default 1)")
     u.add_argument("--max-pages", type=int, default=30)
     u.add_argument("--all-hosts", action="store_true", help="also follow links to other domains")
+    u.add_argument("--all-paths", action="store_true",
+                   help="also follow links outside the folder of the start page (default: stay below it)")
     u.add_argument("--ignore-robots", action="store_true", help="ignore robots.txt (only for your own sites)")
     u.add_argument("--no-documents", action="store_true", help="do not load linked PDF/TXT/MD files")
     u.add_argument("--discover", action="store_true", help="also try paths mentioned in text/comments")

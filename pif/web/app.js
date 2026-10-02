@@ -515,7 +515,7 @@ function setCrawlRunning(on) {
   $("#url-cancel").hidden = !on;
   $("#url-cancel").disabled = false;
   $("#url-close").disabled = on;
-  ["#url-input", "#url-depth", "#url-max", "#url-same", "#url-docs", "#url-discover", "#url-robots"]
+  ["#url-input", "#url-depth", "#url-max", "#url-path", "#url-same", "#url-docs", "#url-discover", "#url-robots"]
     .forEach((s) => ($(s).disabled = on));
   $("#url-render").disabled = on || !(state.info && state.info.browser);
 }
@@ -529,6 +529,7 @@ async function startCrawl(ev) {
     depth: Number($("#url-depth").value),
     max_pages: Math.max(1, Math.min(300, Number($("#url-max").value) || 30)),
     same_host: $("#url-same").checked,
+    same_path: $("#url-path").checked,
     documents: $("#url-docs").checked,
     discover: $("#url-discover").checked,
     robots: $("#url-robots").checked,
@@ -559,10 +560,14 @@ async function pollCrawl() {
     setCrawlRunning(false);
     return;
   }
-  const pct = st.total ? Math.min(100, Math.round((st.done / st.total) * 100)) : 0;
-  $("#url-bar").style.width = Math.max(2, st.phase === "analyze" ? 50 + pct / 2 : pct / 2) + "%";
+  // loading and analysing run side by side: the bar is half loading, half analysing
+  const loadPart = st.phase === "analyze" ? 1 : (st.total ? st.done / st.total : 0);
+  const anaPart = st.loaded ? st.analyzed / Math.max(st.loaded, st.phase === "analyze" ? 1 : st.total) : 0;
+  $("#url-bar").style.width = Math.max(2, Math.min(100, Math.round(50 * loadPart + 50 * anaPart))) + "%";
+  const where = st.phase === "analyze" ? (st.analyzing || "") : (st.current || "");
   $("#url-status").textContent = crawl.cancelling ? t("cancelling")
-    : `${t(st.phase === "analyze" ? "phase_analyze" : "phase_fetch")}: ${Math.min(st.done + (st.phase === "analyze" ? 1 : 0), st.total)}/${st.total} · ${st.current || ""}`;
+    : (st.phase === "analyze" ? t("analysing_rest", Math.min(st.analyzed + 1, st.loaded), st.loaded)
+      : t("crawl_progress", st.loaded, st.total, st.analyzed)) + (where ? " · " + where : "");
   if (st.status === "running") {
     crawl.timer = setTimeout(pollCrawl, 400);
     return;

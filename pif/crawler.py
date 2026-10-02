@@ -163,7 +163,8 @@ def name_for(url: str, content_type: str, disposition: str = "") -> str:
 class Crawler:
     def __init__(self, start_url: str, max_depth: int = 1, max_pages: int = 30, same_host: bool = True,
                  respect_robots: bool = True, include_documents: bool = True, discover_mentions: bool = False,
-                 delay: float = 0.25, progress=None, cancel=None, opener=None, render_js: bool = False):
+                 delay: float = 0.25, progress=None, cancel=None, opener=None, render_js: bool = False,
+                 same_path: bool = True, on_page=None):
         url = start_url.strip()
         if not re.match(r"https?://", url, re.I):
             url = "https://" + url
@@ -171,6 +172,11 @@ class Crawler:
         if not self.start:
             raise ValueError("Invalid URL")
         self.host = urllib.parse.urlsplit(self.start).netloc
+        # "below this path": the folder of the start page (…/wiki/Installation -> …/wiki/)
+        path = urllib.parse.urlsplit(self.start).path or "/"
+        self.path_prefix = path[:path.rfind("/") + 1] or "/"
+        self.same_path = same_path
+        self.on_page = on_page or (lambda page: None)
         self.max_depth = max(0, int(max_depth))
         self.max_pages = max(1, int(max_pages))
         self.same_host = same_host
@@ -189,6 +195,13 @@ class Crawler:
     # ------------------------------------------------------------- helpers
     def _allowed_host(self, url: str) -> bool:
         return not self.same_host or urllib.parse.urlsplit(url).netloc == self.host
+
+    def _allowed_path(self, url: str, is_doc: bool) -> bool:
+        """Pages must lie below the start folder; linked documents (PDF, TXT …) are loaded from anywhere."""
+        if not self.same_path or is_doc or self.path_prefix == "/":
+            return True
+        parts = urllib.parse.urlsplit(url)
+        return parts.netloc != self.host or (parts.path or "/").startswith(self.path_prefix)
 
     def _robots_ok(self, url: str) -> bool:
         if not self.respect_robots:
@@ -281,6 +294,7 @@ class Crawler:
             result.pages.append(page)
             result.log.append(LogEntry(final, "loaded", f"{len(data) // 1024} KB · depth {depth} · {origin}"))
             if not is_html:
+                self.on_page(page)
                 continue
             text = data.decode(_charset(ctype, data), "replace")
             if self.render_js:
@@ -292,6 +306,7 @@ class Crawler:
                     text = text + "\n" + dom  # links that only exist after JavaScript
             links, styles = extract_links(text, final)
             page.css = self._css_for(styles)
+            self.on_page(page)  # complete: can be analysed while the next pages load
             if depth >= self.max_depth:
                 continue
             candidates = [(u, "link") for u in links]
@@ -302,6 +317,8 @@ class Crawler:
                     continue
                 uext = posixpath.splitext(urllib.parse.urlsplit(u).path)[1].lower()
                 if uext in SKIP_EXT or (uext in DOC_EXT and not self.include_documents):
+                    continue
+                if not self._allowed_path(u, uext in DOC_EXT):
                     continue
                 seen.add(u)
                 queue.append((u, depth + 1, f"{why} from {final}"))

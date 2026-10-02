@@ -16,6 +16,7 @@ import socket
 import subprocess
 import sys
 import tempfile
+import queue
 import threading
 import time
 import traceback
@@ -76,6 +77,8 @@ class CrawlJob:
         self.done = 0
         self.total = int(opts.get("max_pages") or 30)
         self.current = ""
+        self.loaded = 0    # pages fetched so far
+        self.analyzed = 0  # pages analysed so far (runs in parallel to loading)
         self.results = []
         self.log = []
         self.error = ""
@@ -89,36 +92,64 @@ class CrawlJob:
     def _progress(self, done, total, url):
         self.done, self.total, self.current = done, total, url
 
+    def _analyse(self, pages: "queue.Queue"):
+        """Worker: analyses each page as soon as the crawler has it (loading waits for the network and the
+        browser, analysing needs the CPU – so both run at the same time)."""
+        while True:
+            page = pages.get()
+            if page is None:
+                return
+            if self.cancelled:
+                continue
+            self.analyzing = page.url
+            try:
+                is_html = page.name.lower().endswith((".html", ".htm")) or "html" in page.content_type
+                fid, r = STORE.add(page.name, page.rendered or page.data, path=page.url, extra_css=page.css,
+                                   web=is_html, source=page.data if page.rendered else b"", batch=self.batch)
+            except Exception as exc:
+                self.analysis_errors.append({"url": page.url, "status": "error", "note": f"analysis: {exc}"[:200],
+                                             "code": None})
+                continue
+            finally:
+                self.analyzing = ""
+            with self.lock:
+                if self.cancelled:  # the UI already has its results: drop the page that was in progress
+                    with STORE.lock:
+                        STORE.files.pop(fid, None)
+                    continue
+                self.results.append(_result_payload(fid, r, self.batch))
+                self.analyzed += 1
+
+    def _on_page(self, page):
+        self.loaded += 1
+        self.pages.put(page)
+
     def _run(self):
         from .crawler import Crawler
+        self.pages = queue.Queue()
+        self.analyzing = ""
+        self.analysis_errors = []
+        worker = threading.Thread(target=self._analyse, args=(self.pages,), daemon=True)
+        worker.start()
         try:
             o = self.opts
             crawler = Crawler(o.get("url", ""), max_depth=int(o.get("depth", 1)), max_pages=int(o.get("max_pages", 30)),
                               same_host=bool(o.get("same_host", True)), respect_robots=bool(o.get("robots", True)),
                               include_documents=bool(o.get("documents", True)),
                               discover_mentions=bool(o.get("discover", False)),
-                              render_js=bool(o.get("render", False)),
-                              progress=self._progress, cancel=lambda: self.cancelled)
+                              render_js=bool(o.get("render", False)), same_path=bool(o.get("same_path", True)),
+                              progress=self._progress, cancel=lambda: self.cancelled, on_page=self._on_page)
             res = crawler.run()
             self.log = [{"url": e.url, "status": e.status, "note": e.note, "code": e.code} for e in res.log]
             self.phase = "analyze"
-            self.total = len(res.pages)
-            for i, page in enumerate(res.pages):
-                if self.cancelled:
-                    break
-                self.done, self.current = i, page.url
-                is_html = page.name.lower().endswith((".html", ".htm")) or "html" in page.content_type
-                fid, r = STORE.add(page.name, page.rendered or page.data, path=page.url, extra_css=page.css,
-                                   web=is_html, source=page.data if page.rendered else b"", batch=self.batch)
-                with self.lock:
-                    if self.cancelled:  # the UI already has its results: drop the page that was in progress
-                        with STORE.lock:
-                            STORE.files.pop(fid, None)
-                        break
-                    self.results.append(_result_payload(fid, r, self.batch))
-            self.done = len(res.pages)
+            self.total = self.loaded
+            self.pages.put(None)
+            worker.join()
+            self.log += self.analysis_errors
+            self.done = self.total
             self.status = "cancelled" if self.cancelled else "done"
         except Exception as exc:
+            self.pages.put(None)
             self.error = f"{type(exc).__name__}: {exc}"
             self.status = "error"
 
@@ -131,7 +162,8 @@ class CrawlJob:
             # a cancel takes effect for the UI at once; the worker only finishes the page it is on
             status = "cancelled" if self.cancelled and self.status == "running" else self.status
             d = {"status": status, "phase": self.phase, "done": self.done, "total": self.total,
-                 "current": self.current, "error": self.error, "log": self.log}
+                 "current": self.current, "error": self.error, "log": self.log,
+                 "loaded": self.loaded, "analyzed": self.analyzed, "analyzing": getattr(self, "analyzing", "")}
             if status != "running":
                 d["results"] = list(self.results)
         return d

@@ -127,7 +127,12 @@ python3 -m venv .venv && .venv/bin/pip install -r requirements.txt   # Windows: 
 
 **Scan website** takes a URL. The program loads the page and, if you want, follows its links and sub-pages.
 
-- **Link depth:** 0 = this page only, 1–3 = follow links; plus a page limit (default 30).
+- **Link depth:** 0 = this page only, 1 = plus the pages it links to, 2 = plus the pages linked from those, …; plus a
+  page limit (default 30). Depth counts link *levels*, not pages.
+- **Only pages below this address** is preset: starting at `…/wiki/Installation`, only `…/wiki/…` pages are followed,
+  not the site-wide navigation (linked documents are still loaded). CLI: `--all-paths` to switch it off.
+- Pages are analysed while the next ones are still loading; with JavaScript on, loading/rendering (about 5 s per page)
+  is what takes the time – switch it off for faster scans of static sites.
 - **Same domain only** is preset and **robots.txt** is respected; both can be switched off for your own sites.
 - **Linked documents** (PDF, TXT, MD, …) and **iframes** are loaded and scanned as well.
 - **External stylesheets** are loaded too, including CSS variables and gradients – only then is text hidden via a CSS
