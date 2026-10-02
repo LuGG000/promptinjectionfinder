@@ -37,7 +37,7 @@ PY=$(find_python) || die "Python 3.9 or newer is missing.
 if [ -d "$DIR/pif" ]; then
   say "Existing installation found: $DIR – updating"
   if [ -x "$DIR/.venv/bin/python" ]; then
-    "$DIR/.venv/bin/python" -m pif update || say "Update not possible – the installed version is kept."
+    PYTHONPATH="$DIR" "$DIR/.venv/bin/python" -m pif update || say "Update not possible – the installed version is kept."
   fi
 elif [ -n "${PIF_SOURCE:-}" ]; then
   say "Copying program from $PIF_SOURCE"
@@ -70,11 +70,11 @@ chmod +x "$DIR"/*.sh "$DIR"/*.command 2>/dev/null || true
 mkdir -p "$BIN"
 cat > "$BIN/pif" <<EOF
 #!/usr/bin/env sh
-exec "$DIR/.venv/bin/python" -m pif "\$@"
+PYTHONPATH="$DIR\${PYTHONPATH:+:\$PYTHONPATH}" exec "$DIR/.venv/bin/python" -m pif "\$@"
 EOF
 cat > "$BIN/promptinjectionfinder" <<EOF
 #!/usr/bin/env sh
-exec "$DIR/.venv/bin/python" -m pif gui "\$@"
+PYTHONPATH="$DIR\${PYTHONPATH:+:\$PYTHONPATH}" exec "$DIR/.venv/bin/python" -m pif gui "\$@"
 EOF
 chmod +x "$BIN/pif" "$BIN/promptinjectionfinder"
 

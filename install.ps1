@@ -45,7 +45,8 @@ $venvPy = Join-Path $Dir '.venv\Scripts\python.exe'
 if (Test-Path (Join-Path $Dir 'pif')) {
     Say "Existing installation found: $Dir - updating"
     if (Test-Path $venvPy) {
-        & $venvPy -m pif update
+        Push-Location $Dir
+        try { & $venvPy -m pif update } finally { Pop-Location }
         if ($LASTEXITCODE -ne 0) { Say 'Update not possible - the installed version is kept.' }
     }
 } elseif ($env:PIF_SOURCE) {
