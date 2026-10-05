@@ -22,7 +22,8 @@ MSG = {
         "verdict": {"dangerous": "DANGEROUS", "suspicious": "SUSPICIOUS", "clean": "CLEAN"},
         "risk": "risk", "error": "Error", "page": "page", "line": "line", "evidence": "Evidence", "decoded": "Decoded",
         "no_files": "No supported files found.", "removed": "findings removed", "no_page": "No page loaded.",
-        "no_browser": "Note: no Chrome/Edge/Chromium/Brave found – JavaScript is not executed.",
+        "no_browser": "Note: no Chromium-based browser (Chrome, Edge, Chromium, Brave, Vivaldi, Opera) found – JavaScript is not executed, "
+                      "so content created by scripts is missing. Install one of them (or set PIF_BROWSER) for complete scans.",
         "new_version": "New version available: {latest} (installed: {current}).", "update_with": "Update with:  pif update",
         "up_to_date": "Up to date: version {current} is the newest.", "update_failed": "Update not possible: {exc}",
         "close_window": "Press Enter to close this window ...",
@@ -32,7 +33,8 @@ MSG = {
         "verdict": {"dangerous": "GEFÄHRLICH", "suspicious": "VERDÄCHTIG", "clean": "UNAUFFÄLLIG"},
         "risk": "Risiko", "error": "Fehler", "page": "Seite", "line": "Zeile", "evidence": "Beleg", "decoded": "Dekodiert",
         "no_files": "Keine unterstützten Dateien gefunden.", "removed": "Funde entfernt", "no_page": "Keine Seite geladen.",
-        "no_browser": "Hinweis: kein Chrome/Edge/Chromium/Brave gefunden – JavaScript wird nicht ausgeführt.",
+        "no_browser": "Hinweis: kein Chromium-basierter Browser (Chrome, Edge, Chromium, Brave, Vivaldi, Opera) gefunden – JavaScript wird nicht "
+                      "ausgeführt, Inhalte, die erst per Skript entstehen, fehlen. Für vollständige Scans einen davon installieren (oder PIF_BROWSER setzen).",
         "new_version": "Neue Version verfügbar: {latest} (installiert: {current}).", "update_with": "Aktualisieren mit:  pif update",
         "up_to_date": "Aktuell: Version {current} ist die neueste.", "update_failed": "Update nicht möglich: {exc}",
         "close_window": "Enter drücken, um dieses Fenster zu schließen ...",

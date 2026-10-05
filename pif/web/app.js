@@ -503,6 +503,8 @@ function openUrlDialog() {
   const browser = state.info && state.info.browser;
   $("#url-render-label").textContent = browser ? t("render_with", browser) : t("render_none");
   $("#url-render").checked = !!browser;
+  $("#url-render-hint").hidden = !!browser;
+  $("#url-render-hint").textContent = browser ? "" : t("render_hint");
   $("#url-log").innerHTML = "";
   $("#url-progress").hidden = true;
   setCrawlRunning(false);
