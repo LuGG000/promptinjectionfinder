@@ -26,6 +26,10 @@ _CANDIDATES = {
         r"%ProgramFiles%\BraveSoftware\Brave-Browser\Application\brave.exe",
         r"%LocalAppData%\BraveSoftware\Brave-Browser\Application\brave.exe",
         r"%LocalAppData%\Chromium\Application\chrome.exe",
+        r"%LocalAppData%\Vivaldi\Application\vivaldi.exe",
+        r"%ProgramFiles%\Vivaldi\Application\vivaldi.exe",
+        r"%LocalAppData%\Programs\Opera\opera.exe",
+        r"%ProgramFiles%\Opera\opera.exe",
     ],
     "darwin": [
         "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
@@ -33,10 +37,12 @@ _CANDIDATES = {
         "/Applications/Chromium.app/Contents/MacOS/Chromium",
         "/Applications/Brave Browser.app/Contents/MacOS/Brave Browser",
         "~/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+        "/Applications/Vivaldi.app/Contents/MacOS/Vivaldi",
+        "/Applications/Opera.app/Contents/MacOS/Opera",
     ],
     "linux": [
         "google-chrome", "google-chrome-stable", "chromium", "chromium-browser", "microsoft-edge",
-        "microsoft-edge-stable", "brave-browser", "brave",
+        "microsoft-edge-stable", "brave-browser", "brave", "vivaldi", "vivaldi-stable", "opera",
         "/snap/bin/chromium", "/var/lib/flatpak/exports/bin/org.chromium.Chromium",
     ],
 }
@@ -70,23 +76,47 @@ def find_browser():
     return None
 
 
+_MODES = ["--headless=new", "--headless"]
+_PROBE_TIMEOUT = 20  # a headless mode that has not worked yet gets a shorter chance when another one is left
+
+
+def _run_order() -> list:
+    return list(_MODES)
+
+
+def _remember(mode: str, worked: bool) -> None:
+    """Try the mode that worked first next time; a mode that hung goes last (some browsers hang in --headless=new)."""
+    if worked:
+        _MODES.remove(mode)
+        _MODES.insert(0, mode)
+    elif _MODES[0] == mode:
+        _MODES.remove(mode)
+        _MODES.append(mode)
+
+
 def render_dom(url: str, budget_ms: int = 8000, timeout: int = 60):
     """Return the rendered HTML (str) of ``url`` or None if rendering is not possible."""
     browser = find_browser()
     if not browser:
         return None
     with tempfile.TemporaryDirectory(prefix="pif-render-") as profile:
-        for headless in ("--headless=new", "--headless"):
+        modes = _run_order()
+        for n, headless in enumerate(modes):
             cmd = [browser, headless, "--disable-gpu", "--no-first-run", "--no-default-browser-check",
                    "--disable-extensions", "--mute-audio", "--hide-scrollbars", f"--user-data-dir={profile}",
                    f"--virtual-time-budget={budget_ms}", "--dump-dom", url]
             if not sys.platform.startswith("win") and hasattr(os, "geteuid") and os.geteuid() == 0:
                 cmd.insert(1, "--no-sandbox")  # Chromium refuses to run as root otherwise (containers)
+            last = n == len(modes) - 1
             try:
-                out = subprocess.run(cmd, capture_output=True, timeout=timeout)
-            except (OSError, subprocess.TimeoutExpired):
+                out = subprocess.run(cmd, capture_output=True, timeout=timeout if last else min(timeout, _PROBE_TIMEOUT))
+            except subprocess.TimeoutExpired:
+                _remember(headless, False)
+                continue
+            except OSError:
                 continue
             html = out.stdout.decode("utf-8", "replace")
             if out.returncode == 0 and "<" in html[:2000]:
+                _remember(headless, True)
                 return html
     return None

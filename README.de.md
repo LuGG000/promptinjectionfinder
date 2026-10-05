@@ -150,11 +150,14 @@ python3 -m venv .venv && .venv/bin/pip install -r requirements.txt   # Windows: 
 - Optional: **im Text/in Kommentaren erwähnte Dateien ausprobieren**, z. B. `vorlage.html` aus einem HTML-Kommentar.
 - Seiten mit identischem Inhalt werden nur einmal gescannt, und ein Protokoll zeigt jede URL mit Status (geladen, 404, robots, Duplikat).
 
-**JavaScript:** Ist Chrome, Edge, Chromium oder Brave installiert, wird jede Seite zusätzlich wie im Browser dargestellt
+**JavaScript:** Ist ein Chromium-basierter Browser (Chrome, Edge, Chromium, Brave, Vivaldi oder Opera) installiert, wird jede Seite zusätzlich wie im Browser dargestellt
 (headless, `--dump-dom`). So sind auch Inhalte enthalten, die erst per Skript entstehen, etwa generierte Aufgaben oder Reiter.
 Geprüft wird die dargestellte Seite *und* der ausgelieferte Quelltext. Was nur im Quelltext steht (Scraper und KI-Tools lesen es
 trotzdem), wird als „Nur im Seitenquelltext“ gemeldet. Ohne Browser wird das statische HTML genutzt. Das Scannen von Webseiten
 ist die einzige Funktion, die das Internet nutzt.
+
+Browser-Suche: Es wird der erste installierte Browser aus der Liste genutzt. Einen anderen Chromium-basierten Browser wählst du mit
+`PIF_BROWSER=/pfad/zum/browser`. Firefox und Safari werden nicht unterstützt (kein `--dump-dom`); dann wird das statische HTML genutzt.
 
 **Export von Webseiten: Text und Aufgaben statt HTML.** Für jede Seite entsteht eine Markdown-Datei mit dem bereinigten Text in
 Anzeige-Reihenfolge:

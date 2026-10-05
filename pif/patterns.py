@@ -10,10 +10,10 @@ Rules flagged ``raw`` are applied unchanged on a lowercase, unfolded view.
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from .i18n import T
-from .normalize import View, build_view, plain_view
+from .normalize import View, _base_view, build_view, plain_view
 from .unicode_tools import is_invisible
 
 CATEGORY_TITLES = {
@@ -292,28 +292,98 @@ class Rule:
     id: str
     category: str
     weight: int
-    strict: re.Pattern
-    loose: re.Pattern
+    strict_src: str
+    loose_src: str
     raw: bool
+    needs: tuple = None  # substrings of which at least one must occur in any text the rule can match
+    _compiled: dict = field(default_factory=dict, repr=False, compare=False)
+
+    # Regexes are compiled on first use: most rules never run on a short text (see ``needs``).
+    def _rx(self, which: str) -> re.Pattern:
+        rx = self._compiled.get(which)
+        if rx is None:
+            src = self.strict_src if which == "strict" else self.loose_src
+            rx = self._compiled[which] = re.compile(src, re.IGNORECASE if self.raw else 0)
+        return rx
+
+    @property
+    def strict(self) -> re.Pattern:
+        return self._rx("strict")
+
+    @property
+    def loose(self) -> re.Pattern:
+        return self._rx("loose")
 
 
-def _compile(pattern: str, raw: bool) -> tuple:
+def _sources(pattern: str, raw: bool) -> tuple:
     if raw:
-        rx = re.compile(pattern, re.IGNORECASE)
-        return rx, rx
+        return pattern, pattern
     # " ?" = optional separator; " " = at least one separator (strict) or any (loose).
     marker = "\u0001"
     base = pattern.replace(" ?", marker)
     strict = base.replace(" ", SEP_STRICT).replace(marker, SEP)
     loose = base.replace(" ", SEP).replace(marker, SEP)
     lead, tail = r"(?<![a-z0-9])", r"(?![a-z])"
-    return re.compile(lead + "(?:" + strict + ")" + tail), re.compile(lead + "(?:" + loose + ")")
+    return lead + "(?:" + strict + ")" + tail, lead + "(?:" + loose + ")"
+
+
+try:  # the regex parser moved in Python 3.11
+    from re import _constants as _sre_c, _parser as _sre_parse
+except ImportError:  # pragma: no cover - Python 3.9 / 3.10
+    import sre_constants as _sre_c
+    import sre_parse as _sre_parse
+
+_MAX_NEEDS = 40
+
+
+def _needs_of(seq):
+    """Substrings of which a match of the parsed pattern ``seq`` must contain at least one, or None.
+
+    Only literal text that every match has to contain is used (never optional parts), so a text
+    without any of these substrings cannot match and the (slow) regex scan can be skipped.
+    """
+    cands = []
+    run = []
+
+    def flush():
+        if run:
+            cands.append(("".join(run),))
+            run.clear()
+
+    for op, av in seq:
+        if op == _sre_c.LITERAL:
+            run.append(chr(av))
+            continue
+        flush()
+        if op == _sre_c.SUBPATTERN:
+            sub = _needs_of(av[-1])
+            if sub:
+                cands.append(sub)
+        elif op == _sre_c.BRANCH:
+            alts = [_needs_of(a) for a in av[1]]
+            if all(alts):
+                cands.append(tuple(sorted({x for a in alts for x in a})))
+        elif op in (_sre_c.MAX_REPEAT, _sre_c.MIN_REPEAT) and av[0] >= 1:
+            sub = _needs_of(av[2])
+            if sub:
+                cands.append(sub)
+    flush()
+    cands = [c for c in cands if len(c) <= _MAX_NEEDS and min(len(x) for x in c) >= 3]
+    if not cands:
+        return None
+    return max(cands, key=lambda c: (min(len(x) for x in c), -len(c)))
 
 
 def _mk(r):
     raw = len(r) > 4 and r[4]
-    strict, loose = _compile(r[3], raw)
-    return Rule(r[0], r[1], r[2], strict, loose, raw)
+    strict, loose = _sources(r[3], raw)
+    needs = None
+    if not raw:
+        try:
+            needs = _needs_of(_sre_parse.parse(strict))
+        except Exception:  # unknown regex internals: simply scan without the shortcut
+            needs = None
+    return Rule(r[0], r[1], r[2], strict, loose, raw, needs)
 
 
 RULES = [_mk(r) for r in _RULES]
@@ -358,18 +428,35 @@ def _windows(regions, n, pad=160):
     return out
 
 
+def _any_present(needs, text: str, memo: dict) -> bool:
+    for k in needs:
+        r = memo.get(k)
+        if r is None:
+            r = memo[k] = k in text
+        if r:
+            return True
+    return False
+
+
 def find_hits(text: str, rules=None, leet: bool = True) -> list:
     """Run all rules on the normalized views of ``text``; return de-duplicated hits."""
     rules = rules or RULES
-    norm = build_view(text)
+    base = _base_view(text)
+    norm = build_view(text, _base=base)
     jobs = [(norm, None)]  # (view, windows or None for the full text)
     if leet:
-        lv = build_view(text, leet=True)
+        lv = build_view(text, leet=True, _base=base)
         if lv.changed:
             jobs.append((lv, _windows([(k, k + 1) for k in lv.changed], len(lv.text))))
     raw = None
     hits = []
     seen = set()
+    # Per view: which rules can match at all. Needs ASCII text, where a literal in the (case-sensitive,
+    # lowercase) rule is exactly the substring that has to be present.
+    present = {}  # id(view) -> {needle: bool} filled on demand
+    for view, _w in jobs:
+        if view.text.isascii():
+            present[id(view)] = {}
 
     def accept(rule, view, ms, me, need_obfuscation):
         if ms >= me - 1:
@@ -395,6 +482,9 @@ def find_hits(text: str, rules=None, leet: bool = True) -> list:
                 accept(rule, raw, m.start(), m.end(), False)
             continue
         for view, wins in jobs:
+            have = present.get(id(view))
+            if have is not None and rule.needs is not None and not _any_present(rule.needs, view.text, have):
+                continue
             if wins is None:
                 for m in rule.strict.finditer(view.text):
                     accept(rule, view, m.start(), m.end(), False)

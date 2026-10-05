@@ -146,11 +146,14 @@ python3 -m venv .venv && .venv/bin/pip install -r requirements.txt   # Windows: 
 - Optional: **try files mentioned in text/comments**, e.g. `template.html` from an HTML comment.
 - Pages with identical content are scanned once; a log shows every URL with its status (loaded, 404, robots, duplicate).
 
-**JavaScript:** if Chrome, Edge, Chromium or Brave is installed, every page is additionally rendered like in a browser
+**JavaScript:** if a Chromium-based browser (Chrome, Edge, Chromium, Brave, Vivaldi or Opera) is installed, every page is additionally rendered like in a browser
 (headless, `--dump-dom`), so content created by scripts – generated exercises, tabs – is included. Both the rendered page
 *and* the delivered source code are checked; anything that only exists in the source (scrapers and AI tools still read it)
 is reported as “Only in page source”. Without a browser the static HTML is used. Scanning websites is the only feature that
 uses the internet.
+
+Browser lookup: the first installed browser from the list is used. To pick another Chromium-based browser, set
+`PIF_BROWSER=/path/to/browser`. Firefox and Safari are not supported (no `--dump-dom`); the static HTML is used then.
 
 **Exporting web pages: text and tasks instead of HTML.** For every page a Markdown file with the cleaned text in display
 order is written:

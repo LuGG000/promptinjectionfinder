@@ -1,24 +1,11 @@
-"""Build normalized "views" of a text that keep a mapping back to the original.
-
-Attackers obfuscate instructions with homoglyphs, zero-width characters,
-fancy Unicode letters, leetspeak or s p a c e d letters. Pattern matching runs
-on a canonical skeleton of the text while every character of the skeleton
-remembers the offset of the original character it came from, so findings can
-be reported (and removed) at their exact original position.
-
-Regions where words were glued together by the normalization (spaced-out
-letters, invisible characters inside words) are remembered as
-``loose_regions``: only there the rule engine also accepts matches without
-word separators ("ignoreallpreviousinstructions"), which keeps identifiers
-like ``includeCredentials`` from matching.
-"""
+"""Unoptimised reference copy of pif.normalize (v1.3.3): checks that the fast paths give identical views."""
 from __future__ import annotations
 
 import re
 import unicodedata
 from dataclasses import dataclass, field
 
-from .unicode_tools import fold_char, is_invisible, strip_accents
+from pif.unicode_tools import fold_char, is_invisible, strip_accents
 
 LEET = {
     "0": "o", "1": "i", "3": "e", "4": "a", "5": "s", "7": "t", "8": "b", "9": "g",
@@ -77,38 +64,13 @@ def _merge(regions, pad=0, limit=None):
     return [tuple(r) for r in out]
 
 
-_TOKEN = re.compile(r"[A-Za-z0-9]+|[ \t\r\n]+|[\s\S]")
-_LEET_CHARS = re.compile("[" + re.escape("".join(LEET)) + "]")
-
-
-def _base_view(text: str) -> tuple:
-    """Folded characters with their original offsets: (out_chars, out_idx, loose)."""
+def build_view(text: str, leet: bool = False) -> View:
     out_chars = []
     out_idx = []
     loose = []
     prev_space = True
     dropped_inside = False
-    for m in _TOKEN.finditer(text):
-        tok = m.group()
-        i = m.start()
-        if tok[0] in " \t\r\n":
-            # run of plain ASCII whitespace: collapses to one space
-            if not prev_space:
-                out_chars.append(" ")
-                out_idx.append(i)
-                prev_space = True
-            dropped_inside = False
-            continue
-        if len(tok) > 1 or (tok.isascii() and tok.isalnum()):
-            # run of plain ASCII letters/digits: folding is just lowercasing
-            if dropped_inside:
-                loose.append((len(out_chars) - 1, len(out_chars) + 1))
-                dropped_inside = False
-            out_chars.extend(tok.lower())
-            out_idx.extend(range(i, i + len(tok)))
-            prev_space = False
-            continue
-        ch = tok
+    for i, ch in enumerate(text):
         r = _map_char(ch)
         if not r:
             if not prev_space:
@@ -134,19 +96,11 @@ def _base_view(text: str) -> tuple:
             out_chars.append(f)
             out_idx.append(i)
             prev_space = False
-    return out_chars, out_idx, loose
 
-
-def build_view(text: str, leet: bool = False, _base: tuple = None) -> View:
-    """``_base`` (the result of ``_base_view``) lets callers share the folding pass between views."""
-    out_chars, out_idx, loose = _base if _base is not None else _base_view(text)
-    if leet:
-        out_chars = list(out_chars)  # translated in place below, the base stays untouched
     changed = []
     if leet:
         n = len(out_chars)
-        for mt in _LEET_CHARS.finditer("".join(out_chars)):
-            k = mt.start()
+        for k in range(n):
             c = out_chars[k]
             if c in LEET:
                 left = out_chars[k - 1] if k > 0 else " "
@@ -183,59 +137,20 @@ def build_view(text: str, leet: bool = False, _base: tuple = None) -> View:
     return View(s, out_idx, _merge(loose, pad=0), changed)
 
 
-class _LazyIndex:
-    """Offset table that is only computed when a match has to be mapped back (rare)."""
-
-    def __init__(self, make):
-        self._make = make
-        self._data = None
-
-    def _get(self) -> list:
-        if self._data is None:
-            self._data = self._make()
-        return self._data
-
-    def __len__(self):
-        return len(self._get())
-
-    def __getitem__(self, k):
-        return self._get()[k]
-
-    def __bool__(self):
-        return bool(self._get())
-
-
-_WORD_OR_SPACE = re.compile(r"\S+|\s+")
-_SPACE_RUN = re.compile(r"\s+")
-
-
-def _plain_view_exact(text: str) -> View:
+def plain_view(text: str) -> View:
+    """Lowercased text with whitespace collapsed, no folding (for raw patterns)."""
     out_chars = []
     out_idx = []
     prev_space = True
-    for m in _WORD_OR_SPACE.finditer(text):
-        tok = m.group()
-        i = m.start()
-        if tok[0].isspace():
+    for i, ch in enumerate(text):
+        if ch.isspace():
             if not prev_space:
                 out_chars.append(" ")
                 out_idx.append(i)
                 prev_space = True
             continue
-        if tok.isascii():
-            out_chars.extend(tok.lower())
-        else:  # per character: str.lower() on a whole word is context sensitive (final sigma)
-            out_chars.extend(c.lower() if len(c.lower()) == 1 else c for c in tok)
-        out_idx.extend(range(i, i + len(tok)))
+        lo = ch.lower()
+        out_chars.append(lo if len(lo) == 1 else ch)
+        out_idx.append(i)
         prev_space = False
     return View("".join(out_chars), out_idx)
-
-
-def plain_view(text: str) -> View:
-    """Lowercased text with whitespace collapsed, no folding (for raw patterns)."""
-    if not text.isascii():
-        return _plain_view_exact(text)
-    s = _SPACE_RUN.sub(" ", text)
-    if s.startswith(" "):
-        s = s[1:]
-    return View(s.lower(), _LazyIndex(lambda: _plain_view_exact(text).index))

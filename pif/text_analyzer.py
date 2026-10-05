@@ -434,10 +434,14 @@ def unicode_findings(text: str) -> list:
     return findings
 
 
+# C0/C1 control characters except tab, line feeds, carriage return and ESC / VT / FF (handled elsewhere)
+_CONTROL = re.compile("[\x00-\x08\x0e-\x1a\x1c-\x1f\x7f-\x9f]")
+
+
 def _control_findings(text: str) -> list:
     findings = []
     # --- Control characters ---------------------------------------------
-    ctrl = [i for i, ch in enumerate(text) if U.is_control(ord(ch)) and ch not in "\x1b\x0c\x0b"]
+    ctrl = [m.start() for m in _CONTROL.finditer(text)]
     if ctrl:
         findings.append(Finding(
             category="unicode",
@@ -708,7 +712,7 @@ def encoded_findings(text: str) -> list:
             f = _encoded_finding(text, m.start(), m.end(), dec, "hex", "Hex")
             if f:
                 findings.append(f)
-    for m in _ESC_HEX.finditer(text):
+    for m in (_ESC_HEX.finditer(text) if "\\x" in text else ()):
         try:
             dec = bytes.fromhex(m.group().replace("\\x", "")).decode("utf-8")
         except (ValueError, UnicodeDecodeError):
@@ -717,7 +721,7 @@ def encoded_findings(text: str) -> list:
             f = _encoded_finding(text, m.start(), m.end(), dec, "hex_escape", "Hex-Escape")
             if f:
                 findings.append(f)
-    for m in _UNI_ESC.finditer(text):
+    for m in (_UNI_ESC.finditer(text) if "\\u" in text else ()):
         try:
             dec = codecs.decode(m.group(), "unicode_escape")
         except Exception:
@@ -726,13 +730,13 @@ def encoded_findings(text: str) -> list:
             f = _encoded_finding(text, m.start(), m.end(), dec, "unicode_escape", "Unicode-Escape")
             if f:
                 findings.append(f)
-    for m in _URLENC.finditer(text):
+    for m in (_URLENC.finditer(text) if "%" in text else ()):
         dec = urllib.parse.unquote_plus(m.group())
         if dec != m.group() and _texty(dec):
             f = _encoded_finding(text, m.start(), m.end(), dec, "url", "URL")
             if f:
                 findings.append(f)
-    for m in _ENTITIES.finditer(text):
+    for m in (_ENTITIES.finditer(text) if "&#" in text else ()):
         dec = html.unescape(m.group())
         if _texty(dec):
             f = _encoded_finding(text, m.start(), m.end(), dec, "html_entities", "HTML-Entity")
