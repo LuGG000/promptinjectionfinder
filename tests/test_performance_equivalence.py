@@ -113,15 +113,18 @@ def test_encoded_payloads_still_detected(payload, rule):
 
 
 # --------------------------------------------------------------------------- JavaScript rendering
-def test_render_skips_hanging_headless_mode_and_remembers_the_working_one(monkeypatch):
+@pytest.mark.parametrize("as_root", [False, True])  # as root "--no-sandbox" is inserted into the command line
+def test_render_skips_hanging_headless_mode_and_remembers_the_working_one(monkeypatch, as_root):
     import subprocess
     from pif import render
 
     calls = []
 
     def fake_run(cmd, capture_output, timeout):
-        calls.append((cmd[1], timeout))
-        if cmd[1] == "--headless=new":
+        mode = next(a for a in cmd if a.startswith("--headless"))
+        assert ("--no-sandbox" in cmd) == as_root
+        calls.append((mode, timeout))
+        if mode == "--headless=new":
             raise subprocess.TimeoutExpired(cmd, timeout)
 
         class R:
@@ -132,6 +135,8 @@ def test_render_skips_hanging_headless_mode_and_remembers_the_working_one(monkey
     monkeypatch.setattr(render, "find_browser", lambda: "/usr/bin/fake-browser")
     monkeypatch.setattr(render.subprocess, "run", fake_run)
     monkeypatch.setattr(render, "_MODES", ["--headless=new", "--headless"])
+    monkeypatch.setattr(render.sys, "platform", "linux")
+    monkeypatch.setattr(render.os, "geteuid", lambda: 0 if as_root else 1000, raising=False)
 
     assert "ok" in render.render_dom("file:///x.html")
     assert calls[0] == ("--headless=new", render._PROBE_TIMEOUT)  # short chance for the unproven mode
